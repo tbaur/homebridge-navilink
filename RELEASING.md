@@ -61,9 +61,11 @@ A healthy Release PR changes exactly four files: `package.json`, `package-lock.j
 | PR title prefix | Example | Version bump |
 |---|---|---|
 | `fix:` | `fix: treat a zero outdoor reading as no sensor` | patch (0.1.0 → 0.1.1) |
-| `feat:` | `feat: expose hot water flow as a sensor` | minor (0.1.0 → 0.2.0) |
-| `feat!:` / `fix!:` or a `BREAKING CHANGE:` footer | `feat!: drop Node 22` | major (0.1.0 → 1.0.0) |
+| `feat:` | `feat: expose hot water flow as a sensor` | patch until 1.0 (0.1.0 → 0.1.1) |
+| `feat!:` / `fix!:` or a `BREAKING CHANGE:` footer | `feat!: drop Node 22` | minor until 1.0 (0.1.0 → 0.2.0) |
 | `chore:`, `docs:`, `refactor:`, `test:`, `ci:` | `docs: fix typo` | no release |
+
+`release-please-config.json` sets `bump-patch-for-minor-pre-major` and `bump-minor-pre-major`, so a feature is a patch and a breaking change is a minor until the 1.0.0 line. After 1.0.0 the usual `feat` / major rules apply.
 
 Dependabot titles runtime bumps `fix:` and development bumps `chore:` (see `.github/dependabot.yml`), so a dependency users install cuts a patch release on its own while a test dependency waits for the next release to carry it.
 
