@@ -5,6 +5,9 @@
  * See LICENSE file for full license text
  */
 
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+
 import {
   DEFAULT_MODEL,
   MAX_PASSWORD_LENGTH,
@@ -22,7 +25,12 @@ describe('plugin identity', () => {
   })
 
   it('reads the version HomeKit shows as FirmwareRevision', () => {
-    expect(readPluginVersion()).toBe('0.1.0')
+    // Must track package.json, not a pinned string: the Release PR is the
+    // commit that bumps the version, and a hardcoded expect fails that PR.
+    const pkg = JSON.parse(
+      readFileSync(resolve(__dirname, '../../package.json'), 'utf8'),
+    ) as { version: string }
+    expect(readPluginVersion()).toBe(pkg.version)
     expect(readPluginVersion()).not.toBe(UNKNOWN_PLUGIN_VERSION)
   })
 
