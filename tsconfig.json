@@ -1,0 +1,45 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    // Classic resolution, under its current name (`node` is the deprecated alias).
+    //
+    // Migrating to `node16` is blocked upstream, not forgotten: this package
+    // emits CommonJS while `homebridge` v2 is ESM-only, so `node16` rejects even
+    // type-only imports of it unless every one carries a `resolution-mode`
+    // attribute. `node10` stops functioning in TypeScript 7, so the migration
+    // has to happen before then: either by emitting ESM, or once the type
+    // imports can be resolved without per-import annotations.
+    "module": "commonjs",
+    "moduleResolution": "node10",
+    "ignoreDeprecations": "6.0",
+    // DOM is here for one global: `WebSocket`. The MQTT transport runs on the
+    // runtime's built-in WebSocket rather than a package, so its type has to
+    // come from somewhere, and `@types/node` does not declare it. Nothing else
+    // from the DOM library is used, and `no-restricted-globals` in the lint
+    // config is what keeps the rest of it out.
+    "lib": ["ES2022", "DOM"],
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "declaration": true,
+    // No source maps. `dist/` is committed and published while `src/` is not, so a
+    // map would annotate every emitted file with a path to something the consumer
+    // does not have; a maintainer reads the TypeScript directly instead.
+    "declarationMap": false,
+    "sourceMap": false,
+    // Beyond `strict`: the MQTT codec indexes into byte buffers, so unchecked
+    // element access is exactly the class of bug worth surfacing at compile time.
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "coverage", "tests"]
+}

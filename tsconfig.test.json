@@ -1,0 +1,20 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // Type-checking only, so `tsc -p tsconfig.test.json --noEmit` covers both
+    // trees; `rootDir` must widen to the repo for the tests to be in scope.
+    "noEmit": true,
+    "rootDir": ".",
+    // Test scaffolding is not penalized for unused bindings.
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    // Tests index into fixtures whose shape they just defined. The flag earns
+    // its keep in the MQTT codec, not in assertions about known arrays.
+    "noUncheckedIndexedAccess": false,
+    "types": ["jest", "node"]
+  },
+  "include": ["src/**/*", "tests/**/*"],
+  // Must be restated: `exclude` is inherited, and the base config excludes
+  // `tests`, which would otherwise cancel the `include` above.
+  "exclude": ["node_modules", "dist", "coverage"]
+}

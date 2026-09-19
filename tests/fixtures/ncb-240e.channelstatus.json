@@ -1,0 +1,81 @@
+{
+  "protocolVersion": 1,
+  "clientID": "navilink-a1b2c3d4e5f6",
+  "sessionID": "1700000001000",
+  "requestTopic": "cmd/1/navilink-a1b2c3d4e5f6/status/channelstatus",
+  "response": {
+    "countryCode": 1,
+    "deviceType": 1,
+    "macAddress": "a1b2c3d4e5f6",
+    "additionalValue": "",
+    "swVersion": 4352,
+    "wifiRssi": 0,
+    "channelStatus": {
+      "channelNumber": 1,
+      "channel": {
+        "unitCount": 1,
+        "unitType": 2,
+        "operationUnitCount": 0,
+        "weeklyControl": 2,
+        "totalDayCount": 0,
+        "avgCalorie": 0,
+        "heatSettingTemp": 110,
+        "powerStatus": 1,
+        "heatStatus": 1,
+        "onDemandUseFlag": 2,
+        "avgOutletTemp": 88,
+        "avgInletTemp": 84,
+        "avgSupplyTemp": 95,
+        "avgReturnTemp": 97,
+        "recirculationSettingTemp": 0,
+        "outdoorTemperature": 0,
+        "airSettingTemp": 0,
+        "fanSettingAirFlow": 0,
+        "unitInfo": {
+          "unitNumberStart": 1,
+          "unitNumberEnd": 1,
+          "unitStatusList": [
+            {
+              "unitNumber": 1,
+              "controllerVersion": 3587,
+              "panelVersion": 4096,
+              "errorCode": 0,
+              "subErrorCode": 0,
+              "operationMode": 0,
+              "gasInstantUsage": 0,
+              "accumulatedGasUsage": 215016,
+              "currentOutletTemp": 88,
+              "currentInletTemp": 84,
+              "currentSupplyTemp": 95,
+              "currentReturnTemp": 97,
+              "currentRecirculationTemp": 0,
+              "currentSupplyAirTemp": 0,
+              "currentReturnAirTemp": 0,
+              "currentHeatFlowRate": 0,
+              "blowerCFM": 0,
+              "waterLevel": 0,
+              "thermostatStatus": 0,
+              "currentOutputTDSValue": 0,
+              "accumulatedWaterUsage": 0,
+              "daysFilterUsed": 0,
+              "filterStatus": 0,
+              "numOfWaterUse": 0,
+              "numOfShortWaterUse": 0,
+              "currentDHWTankTemp": 0,
+              "freezeProtectionStatus": 0,
+              "DHWFlowRate": 0,
+              "PoEStatus": 0,
+              "CIPSolutionRemained": 0,
+              "CIPStatus": 0,
+              "CIPOperationTimeHour": 0,
+              "CIPOperationTimeMin": 0,
+              "CIPSolutionSupplement": 0
+            }
+          ]
+        },
+        "DHWSettingTemp": 120,
+        "DHWTankSettingTemp": 0
+      }
+    }
+  }
+}

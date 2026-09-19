@@ -1,0 +1,87 @@
+{
+  "name": "homebridge-navilink",
+  "displayName": "Homebridge NaviLink",
+  "version": "0.1.0",
+  "description": "Homebridge plugin for Navien combi boilers and water heaters through the North American NaviLink cloud: hot water and space-heating thermostats, power, recirculation, fault and temperature accessories. Verified on an NCB-240E (firmware 4352)",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "keywords": [
+    "homebridge-plugin",
+    "supports-hap",
+    "navien",
+    "navilink",
+    "boiler",
+    "combi",
+    "water-heater",
+    "thermostat",
+    "homekit"
+  ],
+  "author": {
+    "name": "tbaur",
+    "url": "https://github.com/tbaur"
+  },
+  "maintainers": [
+    {
+      "name": "tbaur",
+      "url": "https://github.com/tbaur"
+    }
+  ],
+  "funding": {
+    "type": "github",
+    "url": "https://github.com/sponsors/tbaur"
+  },
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tbaur/homebridge-navilink.git"
+  },
+  "bugs": {
+    "url": "https://github.com/tbaur/homebridge-navilink/issues"
+  },
+  "homepage": "https://github.com/tbaur/homebridge-navilink#readme",
+  "overrides": {
+    "js-yaml": "^4.3.2",
+    "brace-expansion": "^5.0.12"
+  },
+  "dependencies": {
+    "@homebridge/plugin-ui-utils": "2.2.6"
+  },
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "@types/node": "^26.6.2",
+    "@typescript-eslint/eslint-plugin": "^8.70.0",
+    "@typescript-eslint/parser": "^8.70.0",
+    "eslint": "^10.11.0",
+    "globals": "^17.12.0",
+    "homebridge": "^2.4.0",
+    "jest": "^30.5.2",
+    "ts-jest": "29.4.12",
+    "typescript": "^6.0.3"
+  },
+  "engines": {
+    "homebridge": "^2.0.0",
+    "node": "^22 || ^24 || ^26"
+  },
+  "scripts": {
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run clean && npm run build",
+    "pretest": "npm run build",
+    "test": "NODE_ENV=test jest --coverage",
+    "test:watch": "NODE_ENV=test jest --watch --coverage=false",
+    "test:unit": "npm run build && NODE_ENV=test jest --coverage --testPathPatterns tests/unit",
+    "lint": "eslint . --max-warnings 0",
+    "lint:fix": "eslint . --fix --max-warnings 0"
+  },
+  "files": [
+    "dist/**/*",
+    "config.schema.json",
+    "homebridge-ui",
+    "docs/**/*",
+    "LICENSE",
+    "README.md",
+    "CHANGELOG.md",
+    "SECURITY.md"
+  ]
+}

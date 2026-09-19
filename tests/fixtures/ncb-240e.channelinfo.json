@@ -1,0 +1,53 @@
+{
+  "protocolVersion": 1,
+  "clientID": "navilink-a1b2c3d4e5f6",
+  "sessionID": "1700000000000",
+  "requestTopic": "cmd/1/navilink-a1b2c3d4e5f6/status/start",
+  "response": {
+    "countryCode": 1,
+    "deviceType": 1,
+    "macAddress": "a1b2c3d4e5f6",
+    "additionalValue": "",
+    "swVersion": 4352,
+    "wifiRssiUse": 0,
+    "channelInfo": {
+      "channelCount": 1,
+      "channelList": [
+        {
+          "channelNumber": 1,
+          "channel": {
+            "unitType": 2,
+            "unitCount": 1,
+            "temperatureType": 2,
+            "setupDHWTempMin": 86,
+            "setupDHWTempMax": 140,
+            "setupHeatTempMin": 90,
+            "setupHeatTempMax": 140,
+            "onDemandUse": 2,
+            "heatControl": 1,
+            "wwsd": 2,
+            "commercialLock": 2,
+            "recirculationUse": 2,
+            "highTempDHWUse": 0,
+            "reCirculationSetupTempMin": 90,
+            "reCirculationSetupTempMax": 140,
+            "panelDipSwitchInfo": 0,
+            "mainDipSwitchInfo": 32,
+            "presumeHeatTempUse": 2,
+            "airSupplyReturnType": 0,
+            "setupDHWTankTempMin": 0,
+            "setupDHWTankTempMax": 0,
+            "setupAirTempMin": 0,
+            "setupAirTempMax": 0,
+            "setupFanAirFlowMin": 0,
+            "setupFanAirFlowMax": 0,
+            "freezeProtectionUse": 0,
+            "DHWTankSensorUse": 2,
+            "DHWUse": 2,
+            "DHWTankUse": 2
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,138 @@
+{
+  "pluginAlias": "NaviLink",
+  "pluginType": "platform",
+  "singular": true,
+  "customUi": true,
+  "customUiPath": "./homebridge-ui",
+  "headerDisplay": "Exposes Navien combi boilers and water heaters to HomeKit through the North American NaviLink cloud (`nlus`): hot water and space-heating thermostats, a power switch, recirculation, a fault sensor and temperature probes. Verified on an NCB-240E. Press **Sign in** to list the appliances on your account; every field below can also be edited by hand.",
+  "footerDisplay": "Your NaviLink password is stored in the Homebridge configuration file, because the plugin has to sign in again after a restart and Navien offers no other credential. See the [documentation](https://github.com/tbaur/homebridge-navilink#readme) for what this plugin does and does not do.",
+  "schema": {
+    "type": "object",
+    "required": ["name"],
+    "properties": {
+      "name": {
+        "title": "Platform Name",
+        "type": "string",
+        "default": "NaviLink",
+        "description": "Shown in the Homebridge log."
+      },
+      "email": {
+        "title": "NaviLink Email",
+        "type": "string",
+        "format": "email",
+        "maxLength": 254,
+        "description": "The email address for your NaviLink account, the same one you use in the NaviLink app."
+      },
+      "password": {
+        "title": "NaviLink Password",
+        "type": "string",
+        "maxLength": 256,
+        "x-schema-form": { "type": "password" },
+        "description": "Stored in plain text in the Homebridge configuration file, as every Homebridge credential is. It is never written to the Homebridge log."
+      },
+      "options": {
+        "title": "Options",
+        "type": "object",
+        "properties": {
+          "statusIntervalSec": {
+            "title": "Status Refresh (seconds)",
+            "type": "integer",
+            "default": 120,
+            "minimum": 30,
+            "maximum": 3600,
+            "description": "A floor on how stale a reading can be. The appliance pushes changes as they happen, so this is not how state normally arrives; it is the backstop for a push that was missed."
+          },
+          "readOnly": {
+            "title": "Read-only",
+            "type": "boolean",
+            "default": false,
+            "description": "Report everything, change nothing. Every accessory still shows state, and a HomeKit write is declined with one explanatory line in the log."
+          },
+          "allowPowerOff": {
+            "title": "Allow HomeKit to Switch the Appliance Off",
+            "type": "boolean",
+            "default": false,
+            "description": "Off by default, and worth leaving off. On a combi appliance the power state governs central heating as well as hot water, so \"turn off the water heater\" said to Siri, or a scene that turns everything off, would stop the heating in a house that may be empty and freezing. With this off, a power-off request is declined and explained instead of obeyed."
+          }
+        }
+      },
+      "devices": {
+        "title": "Appliances",
+        "type": "array",
+        "items": {
+          "type": "object",
+          "title": "Appliance",
+          "required": ["id", "name"],
+          "properties": {
+            "id": {
+              "title": "Identity",
+              "type": "string",
+              "minLength": 3,
+              "maxLength": 20,
+              "pattern": "^[0-9a-fA-F]{12}:([1-9]|[12][0-9]|3[0-2])$",
+              "examples": ["a1b2c3d4e5f6:1"],
+              "description": "Stable identity: twelve hex digits and the channel, as the settings page writes it (lowercase, no separators). Changing it detaches the accessories from their HomeKit rooms and automations."
+            },
+            "name": {
+              "title": "Name",
+              "type": "string",
+              "maxLength": 64,
+              "examples": ["Zone One"],
+              "description": "The appliance's name. Accessories are named from it: \"Boiler\" gives \"Boiler Hot Water\", \"Boiler Heating\", \"Boiler Fault\" and so on."
+            },
+            "channel": {
+              "title": "Channel",
+              "type": "integer",
+              "default": 1,
+              "minimum": 1,
+              "maximum": 32,
+              "description": "1 for a single appliance. A cascade of several appliances behind one gateway uses a channel each."
+            },
+            "dhw": {
+              "title": "Hot Water Thermostat",
+              "type": "boolean",
+              "default": true,
+              "description": "The domestic hot water setpoint, as a HomeKit thermostat. Reads the outlet temperature. Switching it off does not switch the appliance off unless you also allow that above."
+            },
+            "heating": {
+              "title": "Heating Thermostat",
+              "type": "boolean",
+              "default": false,
+              "description": "The space-heating water setpoint, as a HomeKit thermostat. This is the boiler's flow temperature, not a room thermostat: it sets how hot the water going to your radiators is, and your existing room thermostat still decides when heat is called for. Only useful on a combi; an appliance with no heating loop disables it and says so in the log."
+            },
+            "power": {
+              "title": "Power Switch",
+              "type": "boolean",
+              "default": false,
+              "description": "A switch for the appliance's power state. Switching it off is refused unless \"Allow HomeKit to switch the appliance off\" is on."
+            },
+            "recirculation": {
+              "title": "Recirculation Switch",
+              "type": "boolean",
+              "default": false,
+              "description": "Starts the on-demand hot water recirculation pump, so hot water reaches the tap without running it first. The appliance runs the pump for a fixed period and then stops; the switch turns itself off when that happens. Only for appliances with a pump fitted and commissioned."
+            },
+            "fault": {
+              "title": "Fault Sensor",
+              "type": "boolean",
+              "default": false,
+              "description": "A contact sensor that opens when the appliance reports an error code, so HomeKit can notify you. The code itself is written to the log."
+            },
+            "temperatureSensors": {
+              "title": "Temperature Sensors",
+              "type": "boolean",
+              "default": false,
+              "description": "Four read-only sensors: hot water in and out, and heating flow and return. Each one disables itself if the appliance turns out not to report it."
+            },
+            "outdoorSensor": {
+              "title": "Outdoor Temperature",
+              "type": "boolean",
+              "default": false,
+              "description": "The outdoor probe, on an installation that has one fitted for weather compensation. Most do not."
+            }
+          }
+        }
+      }
+    }
+  }
+}

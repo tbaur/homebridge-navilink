@@ -1,0 +1,63 @@
+# Dependencies
+node_modules/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Testing
+coverage/
+.nyc_output/
+*.lcov
+.jest/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Build
+build/
+*.tsbuildinfo
+# Note: dist/ is NOT ignored - it's committed to git for git installs to work
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+.npm-cache/
+
+# Cloud captures and the map used to pseudonymise them. A raw capture from the
+# NaviLink cloud carries your MAC address, your home's street address and
+# coordinates, your account's name and the tokens for your session. The map is a
+# list of them. Only pseudonymised fixtures belong in tests/fixtures/.
+# See scripts/README.md.
+tests/fixtures/raw/
+*.map.json
+
+# Never commit a credential file. The scripts read the account from the
+# environment or prompt for it; neither writes one, but a hand-made one here
+# would be one keystroke from a public repository.
+.navilink-credentials.json

@@ -1,0 +1,108 @@
+name: Tests
+
+on:
+  pull_request:
+    branches: [ main ]
+  merge_group:
+    branches: [ main ]
+
+# Least privilege: these jobs only read the repo and run build/lint/test.
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [22.x, 24.x, 26.x]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+    - name: Setup Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Build TypeScript
+      run: npm run build
+
+    # dist/ is committed (so git installs work); fail if it drifted from src/
+    # or if build produced untracked files under dist/ that were not committed.
+    - name: Verify committed dist is in sync with src
+      run: |
+        if [ -n "$(git status --porcelain -- dist)" ]; then
+          echo "dist/ is dirty or has untracked files after build:"
+          git status --porcelain -- dist
+          exit 1
+        fi
+        git diff --exit-code -- dist
+
+    - name: Run linter
+      run: npm run lint
+
+    - name: Type-check tests against production settings
+      run: npx tsc --noEmit -p tsconfig.test.json
+
+    - name: Run tests
+      run: npm test
+      env:
+        NODE_ENV: test
+
+    - name: Upload coverage to artifacts
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      if: matrix.node-version == '22.x'
+      with:
+        name: coverage-report
+        path: coverage/
+        retention-days: 7
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+    - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+      with:
+        node-version: '24.x'
+        cache: 'npm'
+    - run: npm ci
+    # Gates the release. The runtime surface is deliberately one package — the
+    # Homebridge UI utils for the settings page — because this plugin handles a
+    # cloud password, so an advisory here is both rare and worth stopping for.
+    - name: Audit runtime dependencies
+      run: npm audit --omit=dev --audit-level=moderate
+    # Dev dependencies are the real surface (and the reason the overrides in
+    # package.json exist), but a transitive advisory there should not block a
+    # release, so this reports without failing.
+    - name: Audit development dependencies
+      run: npm audit --audit-level=high || echo "::warning::Development dependency advisories found; review npm audit output"
+
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+    # This plugin holds a NaviLink account password and short-lived AWS
+    # credentials, so a leaked fixture or a pasted log is a live risk rather
+    # than an embarrassment. Tests that need these shapes assemble them at
+    # runtime (`tests/helpers/secrets.ts`) so no file contains a contiguous
+    # key. The same grep runs in `tests/unit/secrets-scan.test.ts`.
+    - name: Reject credential-shaped strings
+      run: |
+        set -euo pipefail
+        patterns='(ASIA|AKIA)[A-Z0-9]{16}|eyJ[A-Za-z0-9_-]{20,}\.|X-Amz-Security-Token=[A-Za-z0-9]'
+        if grep -rInE "$patterns" \
+             --exclude-dir=node_modules --exclude-dir=coverage --exclude-dir=.git \
+             README.md CONTRIBUTING.md SECURITY.md DEVELOPMENT.md RELEASING.md \
+             CHANGELOG.md docs src tests homebridge-ui scripts dist \
+             config.schema.json .github ; then
+          echo "::error::A value shaped like an AWS key, a JWT or a signed URL is committed."
+          exit 1
+        fi
+        echo "No credential-shaped strings found."

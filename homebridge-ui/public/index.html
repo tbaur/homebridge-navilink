@@ -1,0 +1,123 @@
+<!--
+  Copyright (c) 2026 tbaur
+
+  Licensed under the Apache License, Version 2.0
+  See LICENSE file for full license text
+
+  Markup and styles for the custom configuration UI. The behaviour lives in
+  index.js, which is a separate file so that the linter and the tests can reach
+  it.
+-->
+<style>
+  .nl-intro { margin-bottom: 1rem; }
+  .nl-signin { border: 1px solid rgba(128, 128, 128, .3); border-radius: .5rem; padding: .85rem 1rem; margin-bottom: 1rem; }
+  .nl-card { border: 1px solid rgba(128, 128, 128, .3); border-radius: .5rem; padding: .85rem 1rem; margin-bottom: .75rem; }
+  .nl-card.is-selected { border-color: #007bff; box-shadow: 0 0 0 1px rgba(0, 123, 255, .35); }
+  .nl-card-head { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
+  .nl-card-title { font-weight: 600; flex: 1 1 12rem; min-width: 12rem; }
+  .nl-meta { font-size: .82rem; opacity: .75; margin-top: .15rem; }
+  .nl-badge { font-size: .7rem; text-transform: uppercase; letter-spacing: .03em; padding: .12rem .4rem; border-radius: .25rem; background: rgba(128, 128, 128, .2); }
+  .nl-badge.warn { background: rgba(255, 193, 7, .28); }
+  .nl-options { display: flex; gap: 1.1rem; flex-wrap: wrap; margin-top: .6rem; }
+  .nl-check { display: inline-flex; align-items: center; gap: .4rem; margin: 0; }
+  .nl-check input { margin: 0; }
+  .nl-check label { margin: 0; }
+  .nl-check.is-unavailable { opacity: .55; }
+  .nl-empty { opacity: .7; font-style: italic; padding: 1rem 0; }
+  .nl-actions { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; margin-top: 1rem; }
+  .nl-toolbar { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; margin-bottom: 1rem; }
+  .nl-toolbar .spacer { flex: 1 1 auto; }
+  .nl-guard { border-left: 3px solid rgba(255, 193, 7, .8); padding-left: .7rem; margin-top: .6rem; }
+</style>
+
+<div class="nl-intro">
+  <p class="mb-1">
+    Sign in with your NaviLink account. The plugin reads your appliances from the
+    NaviLink cloud, the same service the NaviLink app uses, and lists whatever it finds
+    below with the accessories each one can actually support.
+  </p>
+  <p class="mb-0 text-muted" style="font-size: .85rem;">
+    Your password is sent to Navien to sign in and is stored in the Homebridge
+    configuration file so the plugin can sign in again after a restart. It is never
+    written to the Homebridge log.
+  </p>
+</div>
+
+<div class="nl-signin">
+  <div class="form-row">
+    <div class="form-group col-sm-5 mb-2">
+      <label for="email" style="font-size: .8rem;">NaviLink email</label>
+      <input type="email" class="form-control form-control-sm" id="email"
+             autocomplete="username" placeholder="you@example.com" />
+    </div>
+    <div class="form-group col-sm-5 mb-2">
+      <label for="password" style="font-size: .8rem;">NaviLink password</label>
+      <input type="password" class="form-control form-control-sm" id="password"
+             autocomplete="current-password" maxlength="256" />
+    </div>
+    <div class="form-group col-sm-2 mb-2 d-flex align-items-end">
+      <button class="btn btn-primary btn-sm btn-block" id="discover">Sign in</button>
+    </div>
+  </div>
+  <div class="text-muted" style="font-size: .8rem;">
+    Signing in lists your appliances and asks each one what it is fitted with. Nothing is
+    switched on or changed.
+  </div>
+</div>
+
+<div id="devices"></div>
+
+<div class="nl-card">
+  <div class="nl-card-head">
+    <div class="nl-card-title">Whole install</div>
+  </div>
+
+  <div class="form-group mt-2 mb-2">
+    <label for="interval" style="font-size: .8rem;">Status refresh</label>
+    <select class="form-control form-control-sm" id="interval">
+      <option value="30">Every 30 seconds</option>
+      <option value="60">Every minute</option>
+      <option value="120" selected>Every 2 minutes</option>
+      <option value="300">Every 5 minutes</option>
+      <option value="900">Every 15 minutes</option>
+      <option value="1800">Every 30 minutes</option>
+      <option value="3600">Every 60 minutes</option>
+    </select>
+    <div class="nl-meta">
+      A floor on how stale a reading can be (30–3600 seconds). The appliance also
+      pushes changes as they happen, so this is not how state normally arrives.
+    </div>
+  </div>
+
+  <div class="nl-options">
+    <label class="nl-check">
+      <input type="checkbox" id="read-only" />
+      Read-only
+    </label>
+  </div>
+  <div class="nl-meta">
+    Report everything, change nothing. HomeKit writes are declined and explained in the log.
+  </div>
+
+  <div class="nl-guard">
+    <div class="nl-options">
+      <label class="nl-check">
+        <input type="checkbox" id="allow-power-off" />
+        Allow HomeKit to switch the appliance off
+      </label>
+    </div>
+    <div class="nl-meta">
+      Off by default, and worth leaving off. On a combi the power state governs central
+      heating as well as hot water, so &ldquo;turn off the water heater&rdquo; said to Siri,
+      or a scene that turns everything off, would stop the heating too.
+    </div>
+  </div>
+</div>
+
+<div class="nl-actions">
+  <span id="summary" class="text-muted" style="font-size: .85rem;"></span>
+  <div class="spacer" style="flex: 1 1 auto;"></div>
+  <button class="btn btn-outline-secondary btn-sm" id="toggle-json">Advanced editor</button>
+</div>
+
+<script src="index.js"></script>
