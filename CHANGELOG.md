@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2](https://github.com/tbaur/homebridge-navilink/compare/v0.1.1...v0.1.2) (2026-09-20)
+
+
+### Features
+
+* add accessory name prefix and opt-in diagnostics ([#6](https://github.com/tbaur/homebridge-navilink/issues/6)) ([d18f3cd](https://github.com/tbaur/homebridge-navilink/commit/d18f3cd0890611e8ac596b182f01086a8149d5d7))
+
 ## [0.1.1](https://github.com/tbaur/homebridge-navilink/compare/v0.1.0...v0.1.1) (2026-09-19)
 
 

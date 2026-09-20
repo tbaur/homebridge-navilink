@@ -1,7 +1,7 @@
 {
   "name": "homebridge-navilink",
   "displayName": "Homebridge NaviLink",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Homebridge plugin for Navien combi boilers and water heaters through the North American NaviLink cloud: hot water and space-heating thermostats, power, recirculation, fault and temperature accessories. Verified on an NCB-240E (firmware 4352)",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
