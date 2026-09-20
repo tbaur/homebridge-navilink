@@ -129,7 +129,12 @@ describe('config.schema.json (Homebridge verification CI)', () => {
 
   it('matches the runtime default and range for diagnostics', () => {
     expect(schema.schema.properties.options?.properties?.diagnosticsInterval).toEqual(
-      expect.objectContaining({ default: 0, minimum: 0, maximum: 3600 }),
+      expect.objectContaining({
+        default: 0,
+        minimum: 0,
+        maximum: 3600,
+        'x-schema-form': { type: 'number' },
+      }),
     )
     expect(schema.schema.properties.options?.properties?.structuredLogs).toEqual(
       expect.objectContaining({ type: 'boolean', default: false }),

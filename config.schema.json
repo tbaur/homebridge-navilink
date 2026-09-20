@@ -60,6 +60,9 @@
             "default": 0,
             "minimum": 0,
             "maximum": 3600,
+            "x-schema-form": {
+              "type": "number"
+            },
             "description": "Emit a plugin health line to the Homebridge log every N seconds. 0 is off (the default). Allowed range 0–3600; values between 1 and 29 are clamped up to 30. Logs only; nothing is exposed in HomeKit."
           },
           "structuredLogs": {

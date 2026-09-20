@@ -247,12 +247,15 @@
       ? platformConfig.options.accessoryPrefix
       : ''
     const diagnostics = Number(platformConfig.options.diagnosticsInterval) || 0
-    const diagnosticsSelect = byId('diagnostics-interval')
-    if (!Array.from(diagnosticsSelect.options).some((option) => Number(option.value) === diagnostics)) {
-      diagnosticsSelect.append(el('option', { value: String(diagnostics) }, `Every ${diagnostics} seconds`))
-    }
-    diagnosticsSelect.value = String(diagnostics)
+    byId('diagnostics-interval').value = String(diagnostics)
+    syncDiagnosticsLabel()
     byId('structured-logs').checked = platformConfig.options.structuredLogs === true
+  }
+
+  /** Keep the slider's number in step with the thumb. 0 is Off. */
+  function syncDiagnosticsLabel() {
+    const seconds = Number(byId('diagnostics-interval').value) || 0
+    byId('diagnostics-interval-value').textContent = seconds === 0 ? 'Off' : String(seconds)
   }
 
   /**
@@ -501,7 +504,14 @@
   byId('accessory-prefix').addEventListener('input', () => changed())
   byId('read-only').addEventListener('change', () => changed())
   byId('allow-power-off').addEventListener('change', () => changed())
-  byId('diagnostics-interval').addEventListener('change', () => changed())
+  byId('diagnostics-interval').addEventListener('input', () => {
+    syncDiagnosticsLabel()
+    changed()
+  })
+  byId('diagnostics-interval').addEventListener('change', () => {
+    syncDiagnosticsLabel()
+    changed()
+  })
   byId('structured-logs').addEventListener('change', () => changed())
   byId('toggle-json').addEventListener('click', () => {
     schemaFormVisible = !schemaFormVisible

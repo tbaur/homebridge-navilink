@@ -13,6 +13,7 @@ exports.diagnosticLabel = diagnosticLabel;
 exports.formatReasons = formatReasons;
 exports.formatDiagnosticLine = formatDiagnosticLine;
 exports.formatHealthTransitionLine = formatHealthTransitionLine;
+const labels_1 = require("../utils/labels");
 /** Short operator-facing label for the MQTT session lifecycle. */
 function formatMqttTransportState(state) {
     switch (state) {
@@ -52,14 +53,14 @@ function formatReasons(reasons) {
 }
 /**
  * Concise summary matching the sibling plugins:
- * `Health: healthy | devices 1/1 | mqtt live | api p50 12ms p95 40ms (req 3, err 0)`.
+ * `Health: healthy | devices 1/1 | Publish-subscribe (mqtt) live | api p50 12ms p95 40ms (req 3, err 0)`.
  */
 function formatDiagnosticLine(report) {
     const { lifecycle, devices, transport, api } = report;
     return [
         `${diagnosticLabel(report.msg)}: ${lifecycle.health}${formatReasons(lifecycle.reasons)}`,
         `devices ${devices.online}/${devices.total}`,
-        `mqtt ${formatMqttTransportState(transport.mqttState)}`,
+        `${labels_1.MQTT_CHANNEL} ${formatMqttTransportState(transport.mqttState)}`,
         `api p50 ${api.p50Ms}ms p95 ${api.p95Ms}ms (req ${api.requests}, err ${api.errors})`,
     ].join(' | ');
 }

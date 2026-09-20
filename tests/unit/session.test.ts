@@ -221,7 +221,7 @@ describe('establishing a session', () => {
 
     expect(connections).toHaveLength(2)
     expect(unreachable).toEqual([])
-    expect(log.calls.some((line) => line.includes('mqtt up'))).toBe(true)
+    expect(log.calls.some((line) => line.includes('Publish-subscribe (mqtt) up'))).toBe(true)
     await session.stop()
   })
 })
@@ -653,7 +653,7 @@ describe('credential lifetime', () => {
     expect(built.log.calls.filter((line) => line.startsWith('info ') && line.includes('firmware')))
       .toHaveLength(1)
     expect(built.log.calls.filter((line) => (
-      line.startsWith('info ') && line.includes('mqtt up')
+      line.startsWith('info ') && line.includes('Publish-subscribe (mqtt) up')
     ))).toHaveLength(1)
     expect(built.log.calls.some((line) => line.includes('reconnect in'))).toBe(false)
 
@@ -682,7 +682,7 @@ describe('an unexpected drop', () => {
     jest.advanceTimersByTime(1_000)
     await drain()
 
-    expect(built.log.calls.some((line) => line === 'info mqtt up')).toBe(true)
+    expect(built.log.calls.some((line) => line === 'info Publish-subscribe (mqtt) up')).toBe(true)
 
     const stopping = built.session.stop()
     jest.advanceTimersByTime(100)

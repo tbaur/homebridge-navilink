@@ -15,7 +15,7 @@ export declare function diagnosticLabel(msg: string): string;
 export declare function formatReasons(reasons: string[]): string;
 /**
  * Concise summary matching the sibling plugins:
- * `Health: healthy | devices 1/1 | mqtt live | api p50 12ms p95 40ms (req 3, err 0)`.
+ * `Health: healthy | devices 1/1 | Publish-subscribe (mqtt) live | api p50 12ms p95 40ms (req 3, err 0)`.
  */
 export declare function formatDiagnosticLine(report: DiagnosticsSnapshot): string;
 /** State-only line for a healthy/degraded flip. The heartbeat already has the body. */

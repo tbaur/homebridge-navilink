@@ -15,6 +15,9 @@
 import { forLog } from './validators'
 import { maskMac } from './redact'
 
+/** Operator-facing name for the MQTT live channel. */
+export const MQTT_CHANNEL = 'Publish-subscribe (mqtt)'
+
 /** The appliance name, or `gateway …ABCD` when none is known. */
 export function labelAppliance(input: { name?: string; mac: string }): string {
   const name = input.name?.trim()

@@ -89,6 +89,7 @@ import {
   ControlRejectedError,
   describeError,
   forLog,
+  MQTT_CHANNEL,
   parseAccessoryContext,
   resolveAccessories,
   validateConfig,
@@ -457,7 +458,7 @@ export class NaviLinkPlatform implements DynamicPlatformPlugin, AccessoryHost {
     }
     this.cloudOffline = false
     this.lastOutageWarnAt = 0
-    this.log.info('mqtt recovered')
+    this.log.info(`${MQTT_CHANNEL} recovered`)
   }
 
   // --- AccessoryHost ----------------------------------------------------------

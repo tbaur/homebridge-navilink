@@ -11,6 +11,8 @@
  * with. Use the name the user gave the appliance. Fall back to a masked
  * gateway only when there is no name, and say that it is a gateway.
  */
+/** Operator-facing name for the MQTT live channel. */
+export declare const MQTT_CHANNEL = "Publish-subscribe (mqtt)";
 /** The appliance name, or `gateway …ABCD` when none is known. */
 export declare function labelAppliance(input: {
     name?: string;

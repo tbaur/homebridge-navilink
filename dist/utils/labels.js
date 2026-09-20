@@ -13,9 +13,12 @@
  * gateway only when there is no name, and say that it is a gateway.
  */
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.MQTT_CHANNEL = void 0;
 exports.labelAppliance = labelAppliance;
 const validators_1 = require("./validators");
 const redact_1 = require("./redact");
+/** Operator-facing name for the MQTT live channel. */
+exports.MQTT_CHANNEL = 'Publish-subscribe (mqtt)';
 /** The appliance name, or `gateway …ABCD` when none is known. */
 function labelAppliance(input) {
     const name = input.name?.trim();

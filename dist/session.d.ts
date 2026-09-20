@@ -107,7 +107,7 @@ export declare class NaviLinkSession {
     private readonly announcedFamilies;
     /** Firmware lines already announced at info, so a credential refresh is not a new event. */
     private readonly announcedFirmware;
-    /** True after the first `mqtt up` line, so a refresh is not a boot. */
+    /** True after the first `Publish-subscribe (mqtt) up` line, so a refresh is not a boot. */
     private liveAnnounced;
     /** True after an unexpected drop, so the next connect is a recovery. */
     private liveWasDown;

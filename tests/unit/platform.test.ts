@@ -545,13 +545,13 @@ describe('a cloud outage', () => {
     const built = build()
     built.session().emitUnreachable(new Error('socket hang up'))
     built.session().emitObservation(DEVICE_ID, observation())
-    expect(built.log.calls).toContain('info mqtt recovered')
+    expect(built.log.calls).toContain('info Publish-subscribe (mqtt) recovered')
   })
 
   it('stays quiet about recovery when nothing was wrong', () => {
     const built = build()
     built.session().emitObservation(DEVICE_ID, observation())
-    expect(built.log.calls.some((line) => line.includes('mqtt recovered'))).toBe(false)
+    expect(built.log.calls.some((line) => line.includes('Publish-subscribe (mqtt) recovered'))).toBe(false)
   })
 
   it('does not name the gateway MAC in the outage line', () => {
