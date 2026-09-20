@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.0](https://github.com/tbaur/homebridge-navilink/compare/v0.1.4...v1.0.0) (2026-09-20)
+
+
+### Miscellaneous Chores
+
+* set the next release to 1.0.0 ([f894264](https://github.com/tbaur/homebridge-navilink/commit/f8942640881199bba34ab548c8e8eae1f62d3c4a))
+
 ## [0.1.4](https://github.com/tbaur/homebridge-navilink/compare/v0.1.3...v0.1.4) (2026-09-20)
 
 
