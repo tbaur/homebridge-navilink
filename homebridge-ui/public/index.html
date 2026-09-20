@@ -124,18 +124,14 @@
   </div>
 
   <div class="form-group mt-3 mb-2">
-    <label for="diagnostics-interval" style="font-size: .8rem;">Diagnostics</label>
-    <select class="form-control form-control-sm" id="diagnostics-interval">
-      <option value="0" selected>Off</option>
-      <option value="30">Every 30 seconds</option>
-      <option value="60">Every minute</option>
-      <option value="300">Every 5 minutes</option>
-      <option value="900">Every 15 minutes</option>
-      <option value="1800">Every 30 minutes</option>
-      <option value="3600">Every 60 minutes</option>
-    </select>
+    <label for="diagnostics-interval" style="font-size: .8rem;">
+      Diagnostics interval (seconds)
+      <span id="diagnostics-interval-value" class="float-right">0</span>
+    </label>
+    <input type="range" class="custom-range" id="diagnostics-interval"
+           min="0" max="3600" step="1" value="0" />
     <div class="nl-meta">
-      A health line in the Homebridge log. Off by default. Nothing is exposed in HomeKit.
+      A health line in the Homebridge log. 0 is off. Nothing is exposed in HomeKit.
     </div>
   </div>
   <div class="nl-options">

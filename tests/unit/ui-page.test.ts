@@ -124,7 +124,7 @@ async function settle(): Promise<void> {
 const ELEMENT_IDS = [
   'devices', 'summary', 'email', 'password', 'discover',
   'interval', 'read-only', 'allow-power-off', 'accessory-prefix',
-  'diagnostics-interval', 'structured-logs', 'toggle-json',
+  'diagnostics-interval', 'diagnostics-interval-value', 'structured-logs', 'toggle-json',
 ]
 
 /** A discovered appliance, as the UI server would return it. */
@@ -271,6 +271,16 @@ describe('opening the page', () => {
     expect(page.byId('read-only').checked).toBe(true)
     expect(page.byId('allow-power-off').checked).toBe(false)
     expect(page.byId('accessory-prefix').value).toBe('')
+    expect(page.byId('diagnostics-interval').value).toBe('0')
+    expect(page.byId('diagnostics-interval-value').textContent).toBe('Off')
+  })
+
+  it('restores a saved diagnostics interval onto the slider', async () => {
+    const page = await load({
+      config: [{ ...configured[0], options: { diagnosticsInterval: 300 } }],
+    })
+    expect(page.byId('diagnostics-interval').value).toBe('300')
+    expect(page.byId('diagnostics-interval-value').textContent).toBe('300')
   })
 
   it('keeps a hand-edited interval rather than snapping it to an offered one', async () => {

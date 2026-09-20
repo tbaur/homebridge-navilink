@@ -8,6 +8,7 @@
  */
 
 import type { DiagnosticsSnapshot, MqttTransportState } from '../types'
+import { MQTT_CHANNEL } from '../utils/labels'
 
 /** Short operator-facing label for the MQTT session lifecycle. */
 export function formatMqttTransportState(state: MqttTransportState): string {
@@ -51,14 +52,14 @@ export function formatReasons(reasons: string[]): string {
 
 /**
  * Concise summary matching the sibling plugins:
- * `Health: healthy | devices 1/1 | mqtt live | api p50 12ms p95 40ms (req 3, err 0)`.
+ * `Health: healthy | devices 1/1 | Publish-subscribe (mqtt) live | api p50 12ms p95 40ms (req 3, err 0)`.
  */
 export function formatDiagnosticLine(report: DiagnosticsSnapshot): string {
   const { lifecycle, devices, transport, api } = report
   return [
     `${diagnosticLabel(report.msg)}: ${lifecycle.health}${formatReasons(lifecycle.reasons)}`,
     `devices ${devices.online}/${devices.total}`,
-    `mqtt ${formatMqttTransportState(transport.mqttState)}`,
+    `${MQTT_CHANNEL} ${formatMqttTransportState(transport.mqttState)}`,
     `api p50 ${api.p50Ms}ms p95 ${api.p95Ms}ms (req ${api.requests}, err ${api.errors})`,
   ].join(' | ')
 }

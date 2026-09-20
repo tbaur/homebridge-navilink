@@ -106,7 +106,7 @@ An appliance with no probe reports `0`. The plugin treats that as absent, not as
 
 **Control is rate-limited, and the cloud's own limit is honoured.** Commands to one gateway are spaced out. When the cloud refuses one for arriving too soon, the log is `rate limited` and the plugin pauses for 30 seconds. It does not keep sending to a channel that is already refusing.
 
-**Backoff has jitter.** Reconnects use exponential backoff with full jitter to a capped ceiling, so a regional outage does not produce a synchronised stampede when it ends. A real drop logs the close, then `reconnect in Ns`, then `mqtt recovered` when the session is up again.
+**Backoff has jitter.** Reconnects use exponential backoff with full jitter to a capped ceiling, so a regional outage does not produce a synchronised stampede when it ends. A real drop logs the close, then `reconnect in Ns`, then `Publish-subscribe (mqtt) recovered` when the session is up again.
 
 ## Full configuration reference
 
@@ -198,7 +198,7 @@ Startup, in order:
 adding Boiler Hot Water
 adding Boiler Heating
 Boiler firmware 4352
-mqtt up
+Publish-subscribe (mqtt) up
 Boiler channel 1 family=NCB
 1 appliance(s), 8 accessory(ies)
 ```
@@ -228,13 +228,13 @@ An outage, and its recovery. Every outage warns on the way in so that it gets a 
 ```
 NaviLink broker closed the connection (code 1006)
 reconnect in 2s
-mqtt up
-mqtt recovered
+Publish-subscribe (mqtt) up
+Publish-subscribe (mqtt) recovered
 ```
 
 A continuing outage repeats at most hourly, at debug in between.
 
-A credential refresh is not an outage. The plugin closes the socket itself a few minutes before the AWS credentials expire, signs in again, and the tiles stay current. That is debug only. `family=`, firmware and `mqtt up` do not repeat at info.
+A credential refresh is not an outage. The plugin closes the socket itself a few minutes before the AWS credentials expire, signs in again, and the tiles stay current. That is debug only. `family=`, firmware and `Publish-subscribe (mqtt) up` do not repeat at info.
 
 ### Diagnostics (optional)
 
@@ -243,7 +243,7 @@ Set `options.diagnosticsInterval` to a value between `30` and `3600` seconds to 
 It pairs with `options.structuredLogs: true`, which adds a JSON line next to the human one.
 
 ```
-Health: healthy | devices 1/1 | mqtt live | api p50 80ms p95 120ms (req 3, err 0)
+Health: healthy | devices 1/1 | Publish-subscribe (mqtt) live | api p50 80ms p95 120ms (req 3, err 0)
 ```
 
 | `msg` | Level | When |

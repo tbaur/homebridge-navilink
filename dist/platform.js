@@ -347,7 +347,7 @@ class NaviLinkPlatform {
         }
         this.cloudOffline = false;
         this.lastOutageWarnAt = 0;
-        this.log.info('mqtt recovered');
+        this.log.info(`${utils_1.MQTT_CHANNEL} recovered`);
     }
     // --- AccessoryHost ----------------------------------------------------------
     deviceFor(deviceId) {

@@ -85,6 +85,7 @@ import {
   interruptibleSleep,
   labelAppliance,
   maskEmail,
+  MQTT_CHANNEL,
   sleep,
   type ResolvedAccount,
 } from './utils'
@@ -202,7 +203,7 @@ export class NaviLinkSession {
   /** Firmware lines already announced at info, so a credential refresh is not a new event. */
   private readonly announcedFirmware = new Set<string>()
 
-  /** True after the first `mqtt up` line, so a refresh is not a boot. */
+  /** True after the first `Publish-subscribe (mqtt) up` line, so a refresh is not a boot. */
   private liveAnnounced = false
 
   /** True after an unexpected drop, so the next connect is a recovery. */
@@ -563,18 +564,18 @@ export class NaviLinkSession {
         // A refused fallback must not look like an outage mid-establish.
         connection.onClose((error) => this.handleConnectionClosed(connection, error))
         if (!this.liveAnnounced || this.liveWasDown) {
-          this.log.info('mqtt up')
+          this.log.info(`${MQTT_CHANNEL} up`)
           this.liveAnnounced = true
           this.liveWasDown = false
         } else {
-          this.log.debug('mqtt up')
+          this.log.debug(`${MQTT_CHANNEL} up`)
         }
         return
       } catch (error) {
         lastError = error
         connection.close()
         this.log.debug(
-          `MQTT connect failed with host${signHostWithPort ? ':443' : ''} signature: `
+          `${MQTT_CHANNEL} connect failed with host${signHostWithPort ? ':443' : ''} signature: `
           + describeError(error),
         )
       }

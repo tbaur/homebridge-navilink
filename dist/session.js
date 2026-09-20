@@ -80,7 +80,7 @@ class NaviLinkSession {
     announcedFamilies = new Set();
     /** Firmware lines already announced at info, so a credential refresh is not a new event. */
     announcedFirmware = new Set();
-    /** True after the first `mqtt up` line, so a refresh is not a boot. */
+    /** True after the first `Publish-subscribe (mqtt) up` line, so a refresh is not a boot. */
     liveAnnounced = false;
     /** True after an unexpected drop, so the next connect is a recovery. */
     liveWasDown = false;
@@ -416,19 +416,19 @@ class NaviLinkSession {
                 // A refused fallback must not look like an outage mid-establish.
                 connection.onClose((error) => this.handleConnectionClosed(connection, error));
                 if (!this.liveAnnounced || this.liveWasDown) {
-                    this.log.info('mqtt up');
+                    this.log.info(`${utils_1.MQTT_CHANNEL} up`);
                     this.liveAnnounced = true;
                     this.liveWasDown = false;
                 }
                 else {
-                    this.log.debug('mqtt up');
+                    this.log.debug(`${utils_1.MQTT_CHANNEL} up`);
                 }
                 return;
             }
             catch (error) {
                 lastError = error;
                 connection.close();
-                this.log.debug(`MQTT connect failed with host${signHostWithPort ? ':443' : ''} signature: `
+                this.log.debug(`${utils_1.MQTT_CHANNEL} connect failed with host${signHostWithPort ? ':443' : ''} signature: `
                     + (0, utils_1.describeError)(error));
             }
         }
