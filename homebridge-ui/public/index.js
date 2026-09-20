@@ -140,10 +140,17 @@
         family: '',
         model: '',
         firmware: '',
-        // Nothing is known about an appliance loaded from configuration until
-        // a sign-in says otherwise, so every accessory stays available. The
-        // alternative is greying out a control the user already chose.
-        capabilities: { dhw: true, heating: true, recirculation: true, outdoorSensor: true },
+        // Until a sign-in describes the appliance, only offer hardware the
+        // saved configuration already has. Recirculation and an outdoor probe
+        // are fitted or they are not; turning them on here without asking the
+        // gateway would invent a tile that cannot work. Sign in again after
+        // new hardware is commissioned.
+        capabilities: {
+          dhw: device.dhw !== false,
+          heating: device.heating === true,
+          recirculation: device.recirculation === true,
+          outdoorSensor: device.outdoorSensor === true,
+        },
         known: false,
         online: undefined,
         missing: false,

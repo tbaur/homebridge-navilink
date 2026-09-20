@@ -259,6 +259,34 @@ describe('opening the page', () => {
     expect(page.byId('devices').textContent).toContain('from configuration')
   })
 
+  it('does not offer hardware the saved configuration never enabled', async () => {
+    const page = await load({ config: configured })
+    expect(page.option('Recirculation switch (no recirculation pump is fitted)').disabled)
+      .toBe(true)
+    expect(page.option('Outdoor temperature (no outdoor sensor is fitted)').disabled)
+      .toBe(true)
+    expect(page.option('Heating thermostat (this appliance has no space-heating loop)').disabled)
+      .toBe(true)
+  })
+
+  it('keeps a saved hardware accessory available until a sign-in says otherwise', async () => {
+    const page = await load({
+      config: [{
+        ...configured[0],
+        devices: [{
+          id: 'a1b2c3d4e5f6:1',
+          name: 'Boiler',
+          recirculation: true,
+          outdoorSensor: true,
+          heating: true,
+        }],
+      }],
+    })
+    expect(page.option('Recirculation switch').disabled).toBe(false)
+    expect(page.option('Outdoor temperature').disabled).toBe(false)
+    expect(page.option('Heating thermostat').disabled).toBe(false)
+  })
+
   it('fills the account fields from the configuration', async () => {
     const page = await load({ config: configured })
     expect(page.byId('email').value).toBe('someone@example.com')
@@ -304,13 +332,14 @@ describe('opening the page', () => {
     expect(page.byId('summary').textContent).toBe('1 appliance(s), 2 HomeKit accessory(s).')
   })
 
-  it('offers every accessory for an appliance nothing is known about', async () => {
+  it('does not invent fitted hardware for an appliance nothing has described', async () => {
     const page = await load({ config: configured })
-    // Greying out a control the user already chose, on no evidence, is worse
-    // than offering one that turns out to be unsupported.
+    // Recirculation and an outdoor probe stay off until a sign-in says they
+    // exist. Offering them on a configuration-only card is how a tile that
+    // can never work gets ticked.
     const disabled = page.byId('devices').descendants()
       .filter((node) => node.tagName === 'input' && node.disabled)
-    expect(disabled).toHaveLength(0)
+    expect(disabled).toHaveLength(3)
   })
 
   it('says so rather than throwing when the configuration cannot be read', async () => {
