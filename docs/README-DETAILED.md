@@ -243,7 +243,7 @@ Set `options.diagnosticsInterval` to a value between `30` and `3600` seconds to 
 It pairs with `options.structuredLogs: true`, which adds a JSON line next to the human one.
 
 ```
-Health: healthy | devices 1/1 | Publish-subscribe (mqtt) live | api p50 80ms p95 120ms (req 3, err 0)
+Health: healthy | devices 1/1 | mqtt live | api p50 80ms p95 120ms (req 3, err 0)
 ```
 
 | `msg` | Level | When |
