@@ -66,11 +66,14 @@ The suite never touches the network. It also refuses to run if `NAVILINK_EMAIL` 
 
 Follow [Conventional Commits](https://www.conventionalcommits.org). PR titles drive automated releases via release-please, so use prefixes like:
 
-- `feat:` - New feature (pre-1.0 this is a patch bump)
-- `fix:` - Bug fix
+- `feat:` - New feature (minor bump)
+- `fix:` - Bug fix (patch bump)
+- `feat!:` / `fix!:` or a `BREAKING CHANGE:` footer - major bump
 - `docs:` / `test:` / `refactor:` / `chore:` / `ci:` - no release
 
 Example: `feat: expose hot water flow as a sensor`
+
+See [RELEASING.md](RELEASING.md#version-bumps) for the full table.
 
 ## Pull Request Process
 
