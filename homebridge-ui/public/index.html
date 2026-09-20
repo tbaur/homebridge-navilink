@@ -73,6 +73,16 @@
   </div>
 
   <div class="form-group mt-2 mb-2">
+    <label for="accessory-prefix" style="font-size: .8rem;">Accessory name prefix</label>
+    <input class="form-control form-control-sm" id="accessory-prefix" type="text"
+      maxlength="64" placeholder="Zone One" autocomplete="off" />
+    <div class="nl-meta">
+      HomeKit tiles become this plus the accessory: Zone One Hot Water, Zone One Heating.
+      Leave blank to use each appliance&rsquo;s own name.
+    </div>
+  </div>
+
+  <div class="form-group mt-2 mb-2">
     <label for="interval" style="font-size: .8rem;">Status refresh</label>
     <select class="form-control form-control-sm" id="interval">
       <option value="30">Every 30 seconds</option>
@@ -111,6 +121,28 @@
       heating as well as hot water, so &ldquo;turn off the water heater&rdquo; said to Siri,
       or a scene that turns everything off, would stop the heating too.
     </div>
+  </div>
+
+  <div class="form-group mt-3 mb-2">
+    <label for="diagnostics-interval" style="font-size: .8rem;">Diagnostics</label>
+    <select class="form-control form-control-sm" id="diagnostics-interval">
+      <option value="0" selected>Off</option>
+      <option value="30">Every 30 seconds</option>
+      <option value="60">Every minute</option>
+      <option value="300">Every 5 minutes</option>
+      <option value="900">Every 15 minutes</option>
+      <option value="1800">Every 30 minutes</option>
+      <option value="3600">Every 60 minutes</option>
+    </select>
+    <div class="nl-meta">
+      A health line in the Homebridge log. Off by default. Nothing is exposed in HomeKit.
+    </div>
+  </div>
+  <div class="nl-options">
+    <label class="nl-check">
+      <input type="checkbox" id="structured-logs" />
+      Also emit each diagnostics report as JSON
+    </label>
   </div>
 </div>
 

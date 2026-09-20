@@ -44,6 +44,10 @@ export declare class NaviLinkPlatform implements DynamicPlatformPlugin, Accessor
     private readonly devices;
     private options;
     private session;
+    private readonly platformConfig;
+    private readonly diagnostics;
+    private diagnosticsTimer;
+    private lastDiagnosticsHealth;
     /** True when configuration was unusable and nothing should be attempted. */
     private disabled;
     /** True between the cloud going quiet and the next observation. */
@@ -115,6 +119,12 @@ export declare class NaviLinkPlatform implements DynamicPlatformPlugin, Accessor
      * thermostat-only and is not enforced here.
      */
     control(deviceId: string): ControlIntent;
+    private diagnosticsIntervalMs;
+    private startDiagnostics;
+    private stopDiagnostics;
+    private diagnosticsHeartbeat;
+    private buildDiagnosticsReaders;
+    private emitDiagnostic;
 }
 /** Describe an error for the log, re-exported so the entry point can use it. */
 export { describeError };

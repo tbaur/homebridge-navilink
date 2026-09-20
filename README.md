@@ -1,31 +1,29 @@
 # homebridge-navilink
 
-[![Tests](https://github.com/tbaur/homebridge-navilink/actions/workflows/test.yml/badge.svg)](https://github.com/tbaur/homebridge-navilink/actions/workflows/test.yml) [![npm version](https://img.shields.io/npm/v/homebridge-navilink?style=flat-square)](https://www.npmjs.com/package/homebridge-navilink) [![npm downloads](https://img.shields.io/npm/dt/homebridge-navilink?label=downloads&style=flat-square)](https://www.npmjs.com/package/homebridge-navilink) [![Node.js](https://img.shields.io/badge/node-22%20%7C%7C%2024%20%7C%7C%2026-green)](https://nodejs.org) [![Homebridge](https://img.shields.io/badge/homebridge-2.x-purple)](https://homebridge.io) [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+![Tests](https://github.com/tbaur/homebridge-navilink/actions/workflows/test.yml/badge.svg) ![npm version](https://img.shields.io/npm/v/homebridge-navilink?style=flat-square) ![npm downloads](https://img.shields.io/npm/dt/homebridge-navilink?label=downloads&style=flat-square) ![Node.js](https://img.shields.io/badge/node-22%20%7C%7C%2024%20%7C%7C%2026-green) ![Homebridge](https://img.shields.io/badge/homebridge-2.x-purple) ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
 
 **Navien combi boilers and water heaters in Apple HomeKit.** Hot water and space-heating thermostats, recirculation, faults and temperature probes, with changes arriving as they happen rather than on a polling loop. Verified against an NCB-240E (firmware 4352).
 
 Scheduling, weekly programmes and commissioning stay in the NaviLink app, which does them properly. This plugin adds the tile, the scene, the automation and the spoken command. It also adds a fault sensor that tells you the boiler has stopped before the shower does.
 
-> **This plugin talks to Navien's cloud, not to your boiler.** There is no local API on a NaviLink gateway. It needs your NaviLink account. See [Supported devices](#supported-devices) and [Security](#security) before you install it.
-
 ## Features
 
 ### Per appliance
 
-- **Hot water thermostat:** the domestic hot water setpoint, reading the actual outlet temperature. Respects the range your installer set
-- **Heating thermostat:** the space-heating flow temperature. This is the boiler's water temperature, not a room thermostat. Your room thermostat still decides when heat is called for
-- **Power switch:** on and off, with switching *off* refused by default because it stops central heating too
-- **Recirculation switch:** starts the on-demand pump, so hot water reaches the tap without running it first. Only offered where a pump is fitted. The appliance runs the pump for a fixed period and then stops; the tile turns itself off when that happens
-- **Fault sensor:** a contact sensor that opens on an error code, so HomeKit can notify you. The code goes to the log
-- **Temperature sensors:** hot water in and out, heating flow and return, and the outdoor probe if one is fitted. Each disables itself if the appliance does not report it
+- **Hot water thermostat:** the domestic hot water setpoint, reading the actual outlet temperature
+- **Heating thermostat:** the space-heating flow temperature. This is the boiler's water temperature
+- **Power switch:** on and off, with switching *off* refused by default because it stops central heating
+- **Recirculation switch:** starts the on-demand pump, so hot water reaches the tap without running it first. Only offered where a pump is fitted.
+- **Fault sensor:** a contact sensor that opens and logs on an error code, so HomeKit can notify you
+- **Temperature sensors:** hot water in and out, heating flow and return, and the optional outdoor probe
 
 ### Reliability
 
 - **Push, not polling.** The gateway sends changes as they happen, so a setpoint changed at the wall controller or in the NaviLink app reaches HomeKit in about a second. The poll is only a backstop
 - **A rejected password is never retried.** Repeating a wrong password at a cloud is how an account gets locked. The plugin stops, says so once, and waits for you
-- **Credentials are renewed on a clock,** a few minutes before they expire, so the connection is not already dead in the middle of the night
-- **A connected socket is not a live appliance.** Readings carry the time they were taken, and a stale one becomes No Response instead of yesterday's setpoint
-- **Honest state:** No Response until the appliance has actually been read, never a value it cannot confirm
+- **Credentials are renewed on a clock,** a few minutes before they expire
+- **A connected socket is not a live appliance.** Readings carry the time they were taken, and a stale one becomes No Response instead
+- **State:** No Response until the appliance has actually been read, and not a value it cannot confirm
 - **Never loses your rooms:** a broken config disables the platform without unregistering anything
 
 ### Quality
@@ -91,19 +89,19 @@ Accessories appear in the Home app after restart, showing No Response for the fe
 
 Any Navien appliance that the NaviLink app controls. The cloud interface is the same for all of them; what differs is which capabilities an appliance reports.
 
-| Verified against | Notes |
-|---|---|
+| Verified against  | Notes                                             |
+| ----------------- | ------------------------------------------------- |
 | **NCB-240E (NG)** | Combi: hot water and space heating, firmware 4352 |
 
 Other families are decoded from the same table the NaviLink app uses and are expected to work, but nobody has confirmed them here:
 
-| Family | Expected |
-|---|---|
+| Family             | Expected                                                                       |
+| ------------------ | ------------------------------------------------------------------------------ |
 | **NPE, NPE2, NPN** | Tankless water heaters. Hot water only; the heating thermostat disables itself |
-| **NCB-H** | Combi with a buffer tank |
-| **NHB** | Boiler. Space heating only |
-| **NFB, NFC** | Boilers with hot water and space heating |
-| **NVW** | Water heater with a tank |
+| **NCB-H**          | Combi with a buffer tank                                                       |
+| **NHB**            | Boiler. Space heating only                                                     |
+| **NFB, NFC**       | Boilers with hot water and space heating                                       |
+| **NVW**            | Water heater with a tank                                                       |
 
 If yours is not listed, it will most likely work. Please open an issue with the output of `node scripts/capture-fixture.js --redact` either way, so the table can say so with confidence.
 
@@ -111,31 +109,34 @@ If yours is not listed, it will most likely work. Please open an issue with the 
 
 Only one `NaviLink` platform block is supported. It can hold as many appliances as the account owns.
 
-| Option | Required to run | Description |
-|---|:-:|---|
-| `name` | ✓ | Plugin instance name shown in Homebridge logs |
-| `email` | ✓ | Your NaviLink account address. Needed before the plugin signs in |
-| `password` | ✓ | Your NaviLink password. Needed before the plugin signs in |
-| `devices` | ✓ | List of appliances. Needed before the plugin signs in |
-| `options.statusIntervalSec` | | Backstop refresh, 30–3600 seconds (default 120) |
-| `options.readOnly` | | Report everything, change nothing (default false) |
-| `options.allowPowerOff` | | Let HomeKit switch the appliance off (default false) |
+| Option                        | Required to run | Description                                                                     |
+| ----------------------------- | --------------- | ------------------------------------------------------------------------------- |
+| `name`                        | ✓               | Plugin instance name shown in Homebridge logs                                   |
+| `email`                       | ✓               | Your NaviLink account address. Needed before the plugin signs in                |
+| `password`                    | ✓               | Your NaviLink password. Needed before the plugin signs in                       |
+| `devices`                     | ✓               | List of appliances. Needed before the plugin signs in                           |
+| `options.statusIntervalSec`   |                 | Backstop refresh, 30–3600 seconds (default 120)                                 |
+| `options.readOnly`            |                 | Report everything, change nothing (default false)                               |
+| `options.allowPowerOff`       |                 | Let HomeKit switch the appliance off (default false)                            |
+| `options.diagnosticsInterval` |                 | Seconds between health lines in the log; `0` is off (default), else `30`–`3600` |
+| `options.structuredLogs`      |                 | With diagnostics, also emit a JSON line (default false)                         |
+| `options.accessoryPrefix`     |                 | Prefix for every HomeKit name. Blank uses each appliance's name                 |
 
 Each entry in `devices[]` takes `id` and `name`, plus an optional `channel` and one flag per accessory: `dhw`, `heating`, `power`, `recirculation`, `fault`, `temperatureSensors` and `outdoorSensor`. The [detailed documentation](docs/README-DETAILED.md#devices-entries) describes each one.
 
 ## Not Working?
 
 1. **"NaviLink rejected the email address or password."** Sign in to the NaviLink app with the same credentials. The plugin has stopped trying on purpose, so fix the password and restart Homebridge
-2. **Everything shows No Response.** Check the log for `the NaviLink platform is disabled`, which means the configuration could not be read
+2. **Everything shows No Response.** Check the log for `platform disabled`, which means the configuration could not be read
 3. **The heating thermostat says it has no loop.** Your appliance reports no space-heating circuit. Turn the accessory off in the settings
 4. **A recirculation switch that is not offered.** No pump is fitted, or it is not commissioned. Check the NaviLink app
-5. **"The appliance refused a command for arriving too soon."** The cloud rate-limits control. The plugin pauses and retries on your next press
+5. **`rate limited`.** The cloud rate-limits control. The plugin pauses and retries on the next press
 
 The [full troubleshooting list](docs/README-DETAILED.md#troubleshooting) covers more, including what Off on the hot water tile does once you allow power-off.
 
 ## Security
 
-This plugin needs your NaviLink password, stores it in the Homebridge configuration file as every Homebridge credential is stored, and sends it to Navien to sign in. It is never written to the Homebridge log, never put into an accessory's cache, and redacted from anything the plugin prints. That is the honest summary; [SECURITY.md](SECURITY.md) has the detail, including what a capture contains and why the fixtures in this repository are pseudonymised.
+This plugin needs your NaviLink password, stores it in the Homebridge configuration file as every Homebridge credential is stored, and sends it to Navien to sign in. It is never written to the Homebridge log, never put into an accessory's cache, and redacted from anything the plugin prints. That is the summary; [SECURITY.md](SECURITY.md) has the detail, including what a capture contains and why the fixtures in this repository are pseudonymised.
 
 ## Requirements
 

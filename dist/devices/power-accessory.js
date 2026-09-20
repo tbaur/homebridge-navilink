@@ -38,7 +38,7 @@ class PowerAccessory extends base_accessory_1.BaseAccessory {
     }
     async writeOn(value) {
         const wantOn = value === true;
-        if (this.declineIfReadOnly('change the power')) {
+        if (this.declineIfReadOnly()) {
             this.restore();
             return;
         }
@@ -58,7 +58,7 @@ class PowerAccessory extends base_accessory_1.BaseAccessory {
                     this.explainGuard(error);
                 }
                 else {
-                    this.host.log.warn(`${(0, utils_1.forLog)(this.displayName)}: could not change power: ${(0, utils_1.describeError)(error)}`);
+                    this.host.log.warn(`${(0, utils_1.forLog)(this.displayName)}: power failed: ${(0, utils_1.describeError)(error)}`);
                 }
                 this.restore();
             }

@@ -28,11 +28,13 @@ import { makeDeviceId, parseDeviceId } from '../api/identity'
 import {
   DEFAULT_STATUS_INTERVAL_SEC,
   MAX_CHANNEL,
+  MAX_DIAGNOSTICS_INTERVAL_SEC,
   MAX_LOG_FIELD_LENGTH,
   MAX_NAME_LENGTH,
   MAX_PASSWORD_LENGTH,
   MAX_STATUS_INTERVAL_SEC,
   MIN_CHANNEL,
+  MIN_DIAGNOSTICS_INTERVAL_SEC,
   MIN_STATUS_INTERVAL_SEC,
 } from '../settings'
 import type {
@@ -47,6 +49,9 @@ export interface ResolvedPlatformOptions {
   statusIntervalSec: number
   allowPowerOff: boolean
   readOnly: boolean
+  diagnosticsInterval: number
+  structuredLogs: boolean
+  accessoryPrefix: string
 }
 
 /** The account, once it is known to be usable. */
@@ -155,6 +160,60 @@ export function resolveStatusIntervalSec(value: unknown, warnings?: string[]): n
   return clamped
 }
 
+/**
+ * Resolve the diagnostics heartbeat interval.
+ *
+ * `0` and anything not a number is off. Values between 1 and 29 clamp up to
+ * 30 so a typo does not silently disable the heartbeat.
+ */
+export function resolveDiagnosticsIntervalSec(value: unknown, warnings?: string[]): number {
+  if (value === undefined || value === 0) {
+    return 0
+  }
+  const numeric = typeof value === 'number' ? value : Number(value)
+  if (!Number.isFinite(numeric) || numeric < 0) {
+    warnings?.push('options.diagnosticsInterval is not a usable number; diagnostics stay off')
+    return 0
+  }
+  const rounded = Math.round(numeric)
+  if (rounded === 0) {
+    return 0
+  }
+  const clamped = Math.min(
+    MAX_DIAGNOSTICS_INTERVAL_SEC,
+    Math.max(MIN_DIAGNOSTICS_INTERVAL_SEC, rounded),
+  )
+  if (clamped !== numeric) {
+    warnings?.push(`options.diagnosticsInterval clamped to ${clamped}s`)
+  }
+  return clamped
+}
+
+/**
+ * Resolve the HomeKit accessory-name prefix.
+ *
+ * Blank means each appliance's own name is used. The value is trimmed and
+ * stripped of control characters; it is never required.
+ */
+export function resolveAccessoryPrefix(value: unknown, warnings?: string[]): string {
+  if (value === undefined || value === '') {
+    return ''
+  }
+  if (typeof value !== 'string') {
+    warnings?.push('options.accessoryPrefix is not a string; using each appliance name')
+    return ''
+  }
+  const cleaned = value.replace(ALL_CONTROL_CHARACTERS, '').trim()
+  if (cleaned.length === 0) {
+    return ''
+  }
+  if (cleaned.length > MAX_NAME_LENGTH) {
+    warnings?.push(`options.accessoryPrefix clamped to ${MAX_NAME_LENGTH} characters`)
+    return cleaned.slice(0, MAX_NAME_LENGTH)
+  }
+  return cleaned
+}
+
 function validateName(value: unknown, label: string, problems: string[]): string | undefined {
   if (typeof value !== 'string' || value.trim().length === 0) {
     problems.push(`${label} is missing a name`)
@@ -201,27 +260,25 @@ function validateAccount(
   const rawPassword = typeof config.password === 'string' ? config.password : ''
 
   if (rawEmail.length === 0 || rawPassword.length === 0) {
-    errors.push(
-      'a NaviLink email address and password are required; open the plugin settings and sign in',
-    )
+    errors.push('email and password required')
     return undefined
   }
   if (!isValidEmail(rawEmail)) {
-    errors.push('the configured NaviLink email address is not a valid address')
+    errors.push('invalid email')
     return undefined
   }
   const password = rawPassword.trim()
   if (password.length === 0) {
-    errors.push('the configured NaviLink password is blank')
+    errors.push('password is blank')
     return undefined
   }
   if (password !== rawPassword) {
     // Said once, without quoting anything: a pasted password often carries a
     // trailing newline, and the resulting rejection is otherwise unexplainable.
-    warnings.push('the NaviLink password had surrounding whitespace, which has been trimmed')
+    warnings.push('password had surrounding whitespace; trimmed')
   }
   if (password.length > MAX_PASSWORD_LENGTH) {
-    errors.push(`the configured NaviLink password is longer than ${MAX_PASSWORD_LENGTH} characters`)
+    errors.push(`password longer than ${MAX_PASSWORD_LENGTH} characters`)
     return undefined
   }
   return { email: rawEmail, password }
@@ -238,7 +295,7 @@ function resolveDeviceIdentity(input: {
   const parsed = parseDeviceId(input.rawId)
   if (parsed === undefined) {
     input.problems.push(
-      `${input.label} has no usable id (open the plugin settings and sign in again)`,
+      `${input.label}: no usable id`,
     )
     return undefined
   }
@@ -314,6 +371,9 @@ export function validateConfig(config: unknown): ConfigValidationResult {
     statusIntervalSec: DEFAULT_STATUS_INTERVAL_SEC,
     allowPowerOff: false,
     readOnly: false,
+    diagnosticsInterval: 0,
+    structuredLogs: false,
+    accessoryPrefix: '',
   }
 
   if (typeof config !== 'object' || config === null) {
@@ -326,15 +386,21 @@ export function validateConfig(config: unknown): ConfigValidationResult {
     statusIntervalSec: resolveStatusIntervalSec(platform.options?.statusIntervalSec, warnings),
     allowPowerOff: platform.options?.allowPowerOff === true,
     readOnly: platform.options?.readOnly === true,
+    diagnosticsInterval: resolveDiagnosticsIntervalSec(
+      platform.options?.diagnosticsInterval,
+      warnings,
+    ),
+    structuredLogs: platform.options?.structuredLogs === true,
+    accessoryPrefix: resolveAccessoryPrefix(platform.options?.accessoryPrefix, warnings),
   }
 
   const rawDevices = platform.devices
   if (rawDevices === undefined) {
-    errors.push('configuration has no "devices" list; open the plugin settings and sign in')
+    errors.push('no devices list')
     return { errors, warnings, account, devices: [], options }
   }
   if (!Array.isArray(rawDevices)) {
-    errors.push('configuration "devices" must be a list')
+    errors.push('devices must be a list')
     return { errors, warnings, account, devices: [], options }
   }
 
@@ -356,18 +422,15 @@ export function validateConfig(config: unknown): ConfigValidationResult {
   if (rawDevices.length > 0 && devices.length === 0) {
     // Every entry was rejected. The user plainly meant to configure something,
     // so this is fatal rather than an idle platform.
-    errors.push(`all ${rawDevices.length} configured device(s) were rejected; see the warnings above`)
+    errors.push(`all ${rawDevices.length} device(s) rejected`)
   } else if (rawDevices.length === 0) {
     // An empty list with a valid account used to start a session and then
     // unregister every cached tile. Fatal keeps the rooms.
-    errors.push('no devices are configured; open the plugin settings and sign in')
+    errors.push('no devices configured')
   }
 
   if (options.readOnly && devices.length > 0) {
-    warnings.push(
-      'options.readOnly is on: every accessory will report state, and HomeKit will not be '
-      + 'able to change a setpoint, a power state or recirculation',
-    )
+    warnings.push('readOnly: writes disabled')
   }
 
   return { errors, warnings, account, devices, options }
@@ -380,6 +443,10 @@ export function validateConfig(config: unknown): ConfigValidationResult {
  * detected once: two accessories sharing a name still work, but they make Siri
  * ambiguous, which is worth a warning.
  *
+ * When `accessoryPrefix` is set it replaces the appliance name as the stem
+ * (`Zone One Hot Water`). Two appliances on one prefix keep the appliance
+ * name after it so the tiles stay distinct.
+ *
  * The probe accessories are created unconditionally when `temperatureSensors`
  * is on, rather than only for the probes the appliance turns out to report.
  * Whether a probe exists is only knowable from a live status frame, which
@@ -390,38 +457,42 @@ export function validateConfig(config: unknown): ConfigValidationResult {
 export function resolveAccessories(
   devices: readonly ResolvedDevice[],
   warnings?: string[],
+  accessoryPrefix = '',
 ): ResolvedAccessory[] {
   const accessories: ResolvedAccessory[] = []
+  const nameOf = (device: ResolvedDevice, suffix: string): string => (
+    suffixName(stemFor(device, accessoryPrefix, devices.length), suffix)
+  )
   for (const device of devices) {
     if (device.dhw) {
-      accessories.push({ kind: 'dhw', deviceId: device.id, name: suffixName(device.name, 'Hot Water') })
+      accessories.push({ kind: 'dhw', deviceId: device.id, name: nameOf(device, 'Hot Water') })
     }
     if (device.heating) {
-      accessories.push({ kind: 'heating', deviceId: device.id, name: suffixName(device.name, 'Heating') })
+      accessories.push({ kind: 'heating', deviceId: device.id, name: nameOf(device, 'Heating') })
     }
     if (device.power) {
-      accessories.push({ kind: 'power', deviceId: device.id, name: suffixName(device.name, 'Power') })
+      accessories.push({ kind: 'power', deviceId: device.id, name: nameOf(device, 'Power') })
     }
     if (device.recirculation) {
       accessories.push({
         kind: 'recirculation',
         deviceId: device.id,
-        name: suffixName(device.name, 'Recirculation'),
+        name: nameOf(device, 'Recirculation'),
       })
     }
     if (device.fault) {
-      accessories.push({ kind: 'fault', deviceId: device.id, name: suffixName(device.name, 'Fault') })
+      accessories.push({ kind: 'fault', deviceId: device.id, name: nameOf(device, 'Fault') })
     }
     if (device.temperatureSensors) {
       accessories.push(
-        { kind: 'dhwOutlet', deviceId: device.id, name: suffixName(device.name, 'Hot Water Out') },
-        { kind: 'dhwInlet', deviceId: device.id, name: suffixName(device.name, 'Hot Water In') },
-        { kind: 'heatSupply', deviceId: device.id, name: suffixName(device.name, 'Heating Flow') },
-        { kind: 'heatReturn', deviceId: device.id, name: suffixName(device.name, 'Heating Return') },
+        { kind: 'dhwOutlet', deviceId: device.id, name: nameOf(device, 'Hot Water Out') },
+        { kind: 'dhwInlet', deviceId: device.id, name: nameOf(device, 'Hot Water In') },
+        { kind: 'heatSupply', deviceId: device.id, name: nameOf(device, 'Heating Flow') },
+        { kind: 'heatReturn', deviceId: device.id, name: nameOf(device, 'Heating Return') },
       )
     }
     if (device.outdoorSensor) {
-      accessories.push({ kind: 'outdoor', deviceId: device.id, name: suffixName(device.name, 'Outdoor') })
+      accessories.push({ kind: 'outdoor', deviceId: device.id, name: nameOf(device, 'Outdoor') })
     }
   }
 
@@ -431,10 +502,19 @@ export function resolveAccessories(
   }
   for (const [name, count] of names) {
     if (count > 1) {
-      warnings?.push(`${count} accessories are named ${forLog(name)}; Siri cannot tell them apart`)
+      warnings?.push(`duplicate name: ${forLog(name)} (${count})`)
     }
   }
   return accessories
+}
+
+/** Stem HomeKit names from the prefix, or from the appliance when none is set. */
+function stemFor(device: ResolvedDevice, prefix: string, deviceCount: number): string {
+  if (prefix.length === 0) {
+    return device.name
+  }
+  // Two appliances sharing one prefix would otherwise both be "Prefix Hot Water".
+  return deviceCount > 1 ? `${prefix} ${device.name}` : prefix
 }
 
 /** Append a suffix to a device name without exceeding HomeKit's name budget. */

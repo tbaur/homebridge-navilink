@@ -69,20 +69,15 @@ export class RecirculationAccessory extends BaseAccessory {
     const wantOn = value === true
     const equipped = this.equippedState()
     if (equipped === undefined) {
-      this.host.log.debug(
-        `${forLog(this.displayName)}: recirculation is unknown until the appliance reports it`,
-      )
+      this.host.log.debug(`${forLog(this.displayName)}: recirculation unknown`)
       throw this.communicationFailure()
     }
-    if (this.declineIfReadOnly('change recirculation')) {
+    if (this.declineIfReadOnly()) {
       this.restore()
       return
     }
     if (equipped === false) {
-      this.host.log.info(
-        `${forLog(this.displayName)}: this appliance reports no recirculation pump; `
-        + 'nothing was sent',
-      )
+      this.host.log.info(`${forLog(this.displayName)}: no recirculation pump`)
       this.service.updateCharacteristic(this.host.hap.Characteristic.On, false)
       return
     }
@@ -93,7 +88,7 @@ export class RecirculationAccessory extends BaseAccessory {
         this.logAction(wantOn ? 'RECIRCULATE' : 'RECIRCULATE OFF')
       } catch (error) {
         this.host.log.warn(
-          `${forLog(this.displayName)}: could not change recirculation: ${describeError(error)}`,
+          `${forLog(this.displayName)}: recirculation failed: ${describeError(error)}`,
         )
         this.restore()
       }
@@ -137,10 +132,6 @@ export class RecirculationAccessory extends BaseAccessory {
       return
     }
     this.hasWarnedNotEquipped = true
-    this.host.log.warn(
-      `${forLog(this.displayName)}: the appliance reports no recirculation pump `
-      + '(onDemandUse and recirculationUse are both off). Turn the recirculation accessory '
-      + 'off in the plugin settings, or enable the pump in the NaviLink app if one is fitted.',
-    )
+    this.host.log.warn(`${forLog(this.displayName)}: no recirculation pump`)
   }
 }

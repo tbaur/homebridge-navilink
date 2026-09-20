@@ -81,7 +81,7 @@ class DomesticHotWaterAccessory extends thermostat_accessory_1.ThermostatAccesso
                 this.explainPowerGuard(error);
                 return false;
             }
-            this.host.log.warn(`${(0, utils_1.forLog)(this.displayName)}: could not change the power state: ${(0, utils_1.describeError)(error)}`);
+            this.host.log.warn(`${(0, utils_1.forLog)(this.displayName)}: power failed: ${(0, utils_1.describeError)(error)}`);
             return false;
         }
     }

@@ -96,9 +96,9 @@ export declare abstract class BaseAccessory {
      * True when the write must not happen, having said so at most once.
      *
      * Shared so a thermostat, a power switch and recirculation all use the same
-     * sentence when `options.readOnly` is on.
+     * line when `options.readOnly` is on.
      */
-    protected declineIfReadOnly(what: string): boolean;
+    protected declineIfReadOnly(): boolean;
     /** Update Accessory Information once the appliance has named itself. */
     updateIdentity(input: {
         model: string;

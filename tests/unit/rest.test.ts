@@ -61,13 +61,21 @@ function stubPost(responses: { status: number; body: unknown }[]) {
   return { post, calls }
 }
 
-function build(responses: { status: number; body: unknown }[]) {
+function build(
+  responses: { status: number; body: unknown }[],
+  extras: { metrics?: (sample: { durationMs: number; ok: boolean }) => void } = {},
+) {
   const log = makeLog()
   const { post, calls } = stubPost(responses)
   return {
     log,
     calls,
-    rest: new NaviLinkRest({ log, post, now: () => 1_700_000_000_000 }),
+    rest: new NaviLinkRest({
+      log,
+      post,
+      now: () => 1_700_000_000_000,
+      ...(extras.metrics === undefined ? {} : { metrics: extras.metrics }),
+    }),
   }
 }
 
@@ -324,5 +332,24 @@ describe('readFirmware', () => {
       macAddress: 'a1b2c3d4e5f6',
       additionalValue: '',
     })).resolves.toBeUndefined()
+  })
+})
+
+describe('diagnostics metrics', () => {
+  it('reports one sample per REST attempt, success or failure', async () => {
+    const samples: { durationMs: number; ok: boolean }[] = []
+    const { rest } = build(
+      [{ status: 200, body: signInBody() }],
+      { metrics: (sample) => samples.push(sample) },
+    )
+    await rest.signIn('someone@example.com', 'secret')
+    expect(samples).toEqual([{ durationMs: 0, ok: true }])
+
+    const failing = build(
+      [],
+      { metrics: (sample) => samples.push(sample) },
+    )
+    await expect(failing.rest.signIn('someone@example.com', 'secret')).rejects.toThrow()
+    expect(samples[1]).toEqual({ durationMs: 0, ok: false })
   })
 })

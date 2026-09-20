@@ -15,7 +15,7 @@ import { Command } from '../../src/api/protocol'
 import { buildTopics } from '../../src/api/topics'
 import { NaviLinkSession, type ControlSpec } from '../../src/session'
 import { CONTROL_LOCKOUT_MS } from '../../src/settings'
-import type { ChannelObservation, RefreshReason, ResolvedDevice } from '../../src/types'
+import type { ChannelObservation, RefreshReason, ResolvedDevice, SessionMetrics } from '../../src/types'
 import { AuthenticationError, ControlRejectedError } from '../../src/utils'
 import {
   DEVICE_ID,
@@ -59,6 +59,7 @@ function build(overrides: {
   rest?: FakeRest
   devices?: readonly ResolvedDevice[]
   statusIntervalSec?: number
+  metrics?: SessionMetrics
 } = {}): Built {
   const log = fakeLogger()
   const rest = overrides.rest ?? fakeRest()
@@ -77,6 +78,7 @@ function build(overrides: {
     },
     now: () => now,
     random: () => 0.5,
+    ...(overrides.metrics === undefined ? {} : { metrics: overrides.metrics }),
   })
 
   const observed: Built['observed'] = []
@@ -135,13 +137,17 @@ describe('establishing a session', () => {
     // Channel info before status, because the status frame cannot be decoded
     // until the appliance has said which temperature scale it speaks.
     expect(built.connection.published[0]?.topic).toBe(buildTopics(IDENTITY).start)
+    expect(built.log.calls.some((line) => line.includes('Boiler firmware 4352'))).toBe(true)
+    expect(built.log.calls.some((line) => line.includes('\u2026E5F6'))).toBe(false)
     await built.session.stop()
   })
 
   it('masks the account in the log rather than naming it', async () => {
     const built = await started()
-    const line = built.log.calls.find((entry) => entry.includes('signed in to NaviLink'))
-    expect(line).toBeDefined()
+    const line = built.log.calls.find((entry) => entry.includes('signed in as'))
+    expect(line).toBe('debug signed in as s\u2026e@example.com')
+    expect(built.log.calls.some((entry) => entry.startsWith('info ') && entry.includes('signed in')))
+      .toBe(false)
     expect(line).not.toContain('someone@example.com')
     await built.session.stop()
   })
@@ -174,7 +180,7 @@ describe('establishing a session', () => {
     const built = build({ rest })
     built.session.start()
     await drain()
-    expect(built.log.calls.some((line) => line.includes('is not on this NaviLink account')))
+    expect(built.log.calls.some((line) => line.includes('not on this account')))
       .toBe(true)
     await built.session.stop()
   })
@@ -215,7 +221,7 @@ describe('establishing a session', () => {
 
     expect(connections).toHaveLength(2)
     expect(unreachable).toEqual([])
-    expect(log.calls.some((line) => line.includes('NaviLink live connection is up'))).toBe(true)
+    expect(log.calls.some((line) => line.includes('mqtt up'))).toBe(true)
     await session.stop()
   })
 })
@@ -245,7 +251,7 @@ describe('a rejected credential', () => {
     await drain()
     const errors = built.log.calls.filter((line) => line.startsWith('error '))
     expect(errors).toHaveLength(1)
-    expect(errors[0]).toContain('so the account is not locked out')
+    expect(errors[0]).toContain('sign-in stopped')
   })
 
   it('treats an unrecognised failure as transient, so a cloud blip recovers', async () => {
@@ -293,7 +299,7 @@ describe('observations', () => {
     await drain()
 
     expect(built.log.calls.some((line) => (
-      line.includes('channel 2') && line.includes('not in this gateway')
+      line.includes('channel 2') && line.includes('not on gateway')
     ))).toBe(true)
     await built.session.stop()
   })
@@ -303,7 +309,14 @@ describe('observations', () => {
     built.connection.deliverChannelInfo()
     await drain()
 
-    expect(built.log.calls.some((line) => line.includes('family=NCB'))).toBe(true)
+    const family = built.log.calls.find((line) => line.includes('family=NCB'))
+    expect(family).toBe('info Boiler channel 1 family=NCB')
+    built.log.calls.length = 0
+    built.connection.deliverChannelInfo()
+    await drain()
+    expect(built.log.calls.filter((line) => line.startsWith('info ') && line.includes('family=')))
+      .toEqual([])
+    expect(built.log.calls.some((line) => line === 'debug Boiler channel 1 family=NCB')).toBe(true)
     await built.session.stop()
   })
 
@@ -311,7 +324,7 @@ describe('observations', () => {
     const rest = fakeRest({ devices: [listedDevice({ connected: 0 })] })
     const built = await started({ rest })
 
-    expect(built.log.calls.some((line) => line.includes('offline according to the cloud')))
+    expect(built.log.calls.some((line) => line.includes('cloud reports offline')))
       .toBe(true)
     await built.session.stop()
   })
@@ -323,7 +336,7 @@ describe('observations', () => {
     await drain()
     expect(built.session.observationFor(DEVICE_ID)).toBeDefined()
 
-    built.connection.close()
+    built.connection.drop()
     await drain()
 
     expect(built.session.observationFor(DEVICE_ID)).toBeUndefined()
@@ -388,6 +401,71 @@ describe('observations', () => {
     polls[0]!()
     await drain()
     expect(built.stale).toContain(DEVICE_ID)
+    await built.session.stop()
+    jest.restoreAllMocks()
+  })
+
+  it('counts a poll cycle as ok when every status request is sent', async () => {
+    const polls: Array<() => void> = []
+    const cycles: { ok: number; failed: number }[] = []
+    const realSetInterval = global.setInterval.bind(global)
+    jest.spyOn(global, 'setInterval').mockImplementation((handler, ms) => {
+      if (ms === 60_000) {
+        polls.push(handler as () => void)
+        const handle = { unref() { return this } }
+        return handle as unknown as ReturnType<typeof setInterval>
+      }
+      return realSetInterval(handler, ms as number)
+    })
+    const built = await started({
+      statusIntervalSec: 60,
+      metrics: {
+        apiRequest() {},
+        mqttReconnect() {},
+        pollCycle(ok, failed) { cycles.push({ ok, failed }) },
+        command() {},
+        sessionRefresh() {},
+        push() {},
+      },
+    })
+    built.connection.deliverChannelInfo()
+    await drain()
+    polls[0]!()
+    await drain()
+    expect(cycles).toEqual([{ ok: 1, failed: 0 }])
+    await built.session.stop()
+    jest.restoreAllMocks()
+  })
+
+  it('counts a poll cycle as failed when a status request is refused', async () => {
+    const polls: Array<() => void> = []
+    const cycles: { ok: number; failed: number }[] = []
+    const realSetInterval = global.setInterval.bind(global)
+    jest.spyOn(global, 'setInterval').mockImplementation((handler, ms) => {
+      if (ms === 60_000) {
+        polls.push(handler as () => void)
+        const handle = { unref() { return this } }
+        return handle as unknown as ReturnType<typeof setInterval>
+      }
+      return realSetInterval(handler, ms as number)
+    })
+    const built = await started({
+      statusIntervalSec: 60,
+      metrics: {
+        apiRequest() {},
+        mqttReconnect() {},
+        pollCycle(ok, failed) { cycles.push({ ok, failed }) },
+        command() {},
+        sessionRefresh() {},
+        push() {},
+      },
+    })
+    built.connection.deliverChannelInfo()
+    await drain()
+    built.connection.failPublish = new Error('publish refused')
+    polls[0]!()
+    await drain()
+    expect(cycles).toEqual([{ ok: 0, failed: 1 }])
     await built.session.stop()
     jest.restoreAllMocks()
   })
@@ -506,14 +584,14 @@ describe('the cloud control lockout', () => {
     const built = await ready()
     built.connection.deliverControlFailure(2)
     await expect(built.session.publishControl(DEVICE_ID, spec))
-      .rejects.toThrow(/not sending another for/)
+      .rejects.toThrow(/rate limited/)
     await built.session.stop()
   })
 
   it('warns, because a control that silently did nothing is undiagnosable', async () => {
     const built = await ready()
     built.connection.deliverControlFailure(2)
-    expect(built.log.calls.some((line) => line.includes('arriving too soon'))).toBe(true)
+    expect(built.log.calls.some((line) => line.includes('rate limited'))).toBe(true)
     await built.session.stop()
   })
 
@@ -567,16 +645,45 @@ describe('credential lifetime', () => {
     // connection in the middle of the night.
     jest.advanceTimersByTime(3_600_000)
     await drain()
-    // Then the reconnect's own backoff, which a deliberate refresh still
-    // takes: one loop decides whether to try again, and it does not have a
-    // special case for a close this session asked for.
-    jest.advanceTimersByTime(60_000)
-    await drain()
 
     expect(rest.calls.signIn.length).toBeGreaterThan(1)
+    // A close this session asked for is not an outage: no backoff, no
+    // unreachable, no second boot log.
+    expect(built.unreachable).toEqual([])
+    expect(built.log.calls.filter((line) => line.startsWith('info ') && line.includes('firmware')))
+      .toHaveLength(1)
+    expect(built.log.calls.filter((line) => (
+      line.startsWith('info ') && line.includes('mqtt up')
+    ))).toHaveLength(1)
+    expect(built.log.calls.some((line) => line.includes('reconnect in'))).toBe(false)
 
     // `stop` waits a beat for the DISCONNECT to reach the broker, and under
     // fake timers that beat has to be granted explicitly or the test hangs.
+    const stopping = built.session.stop()
+    jest.advanceTimersByTime(100)
+    await stopping
+  })
+})
+
+describe('an unexpected drop', () => {
+  it('treats a broker close as an outage and says it is reconnecting', async () => {
+    jest.useFakeTimers({ doNotFake: ['nextTick'] })
+    const built = build()
+    built.session.start()
+    await drain()
+    built.log.calls.length = 0
+
+    built.connection.drop()
+    await drain()
+
+    expect(built.unreachable).toHaveLength(1)
+    expect(built.log.calls.some((line) => line === 'info reconnect in 1s')).toBe(true)
+
+    jest.advanceTimersByTime(1_000)
+    await drain()
+
+    expect(built.log.calls.some((line) => line === 'info mqtt up')).toBe(true)
+
     const stopping = built.session.stop()
     jest.advanceTimersByTime(100)
     await stopping

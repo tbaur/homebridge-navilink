@@ -135,13 +135,13 @@ class NaviLinkDiscovery {
         const tokens = await this.rest.signIn(email, password);
         const listed = await this.rest.listDevices({ email, accessToken: tokens.accessToken });
         if (listed.length === 0) {
-            this.log.warn('the NaviLink account has no gateways registered to it');
+            this.log.warn('no gateways on account');
             return;
         }
         for (const entry of listed) {
             if (entry.connected !== 2) {
-                this.log.warn(`gateway ${(0, utils_1.maskMac)(entry.macAddress)} is offline according to the cloud; `
-                    + 'it may not answer this sign-in');
+                // Cloud labels are often rooms. The settings page can show them; the log cannot.
+                this.log.warn(`${(0, utils_1.labelAppliance)({ mac: entry.macAddress })}: cloud reports offline`);
             }
         }
         const clientId = (0, node_crypto_1.randomUUID)();
@@ -197,8 +197,7 @@ class NaviLinkDiscovery {
             opened = true;
             const outcome = await (0, utils_1.raceTimeout)(input.work(session), settings_1.DISCOVERY_BUDGET_MS);
             if (outcome === utils_1.TIMED_OUT) {
-                this.log.warn('not every appliance answered within '
-                    + `${Math.round(settings_1.DISCOVERY_BUDGET_MS / 1_000)}s; an offline gateway will be missing`);
+                this.log.warn(`discovery timeout ${Math.round(settings_1.DISCOVERY_BUDGET_MS / 1_000)}s; incomplete`);
             }
             return true;
         }
@@ -295,7 +294,7 @@ class DiscoverySession {
             responseTopic: (0, topics_1.responseTopic)(gateway.context, 'channelinfo'),
         }));
         if (frame === undefined) {
-            this.log.warn(`gateway ${(0, utils_1.maskMac)(gateway.entry.macAddress)} did not describe itself; it may be offline`);
+            this.log.warn(`${(0, utils_1.labelAppliance)({ mac: gateway.entry.macAddress })}: no channelinfo`);
             return { channels: [], frame: undefined };
         }
         return { channels: (0, channel_1.parseChannelInfo)(frame), frame };

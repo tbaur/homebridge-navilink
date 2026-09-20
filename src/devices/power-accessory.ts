@@ -44,7 +44,7 @@ export class PowerAccessory extends BaseAccessory {
 
   private async writeOn(value: CharacteristicValue): Promise<void> {
     const wantOn = value === true
-    if (this.declineIfReadOnly('change the power')) {
+    if (this.declineIfReadOnly()) {
       this.restore()
       return
     }
@@ -65,7 +65,7 @@ export class PowerAccessory extends BaseAccessory {
           this.explainGuard(error)
         } else {
           this.host.log.warn(
-            `${forLog(this.displayName)}: could not change power: ${describeError(error)}`,
+            `${forLog(this.displayName)}: power failed: ${describeError(error)}`,
           )
         }
         this.restore()

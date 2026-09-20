@@ -11,6 +11,7 @@
  */
 
 import { MqttConnection, type MqttConnectionOptions } from '../../src/api/mqtt'
+import { ConnectionError } from '../../src/utils/errors'
 import { encodePublish, PacketType } from '../../src/api/mqtt-codec'
 import {
   MQTT_KEEPALIVE_SEC,
@@ -294,6 +295,16 @@ describe('teardown', () => {
     expect(harness.socket.closed).toBe(true)
   })
 
+  it('marks a plugin close as expected, so a refresh is not an outage', async () => {
+    const harness = await connected()
+    const closes: Error[] = []
+    harness.connection.onClose((error) => closes.push(error))
+    harness.connection.close()
+
+    expect(closes[0]).toBeInstanceOf(ConnectionError)
+    expect((closes[0] as ConnectionError).expected).toBe(true)
+  })
+
   it('reports closure exactly once, however many things go wrong', async () => {
     // A socket error is routinely followed by a close event, and a ping
     // timeout can race the close it predicted.
@@ -314,7 +325,7 @@ describe('teardown', () => {
 
     harness.socket.hangUp('code 1006')
 
-    await expect(pending).rejects.toThrow(/closed the connection/)
+    await expect(pending).rejects.toThrow('NaviLink broker closed the connection (code 1006)')
   })
 
   it('leaves no timer behind', async () => {

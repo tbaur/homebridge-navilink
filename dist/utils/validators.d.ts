@@ -29,6 +29,9 @@ export interface ResolvedPlatformOptions {
     statusIntervalSec: number;
     allowPowerOff: boolean;
     readOnly: boolean;
+    diagnosticsInterval: number;
+    structuredLogs: boolean;
+    accessoryPrefix: string;
 }
 /** The account, once it is known to be usable. */
 export interface ResolvedAccount {
@@ -72,6 +75,20 @@ export declare function isValidEmail(value: unknown): value is string;
 /** Clamp the status interval into the supported range. */
 export declare function resolveStatusIntervalSec(value: unknown, warnings?: string[]): number;
 /**
+ * Resolve the diagnostics heartbeat interval.
+ *
+ * `0` and anything not a number is off. Values between 1 and 29 clamp up to
+ * 30 so a typo does not silently disable the heartbeat.
+ */
+export declare function resolveDiagnosticsIntervalSec(value: unknown, warnings?: string[]): number;
+/**
+ * Resolve the HomeKit accessory-name prefix.
+ *
+ * Blank means each appliance's own name is used. The value is trimmed and
+ * stripped of control characters; it is never required.
+ */
+export declare function resolveAccessoryPrefix(value: unknown, warnings?: string[]): string;
+/**
  * Validate a platform configuration block.
  *
  * Never throws: the platform needs the errors and warnings in order to report
@@ -86,6 +103,10 @@ export declare function validateConfig(config: unknown): ConfigValidationResult;
  * detected once: two accessories sharing a name still work, but they make Siri
  * ambiguous, which is worth a warning.
  *
+ * When `accessoryPrefix` is set it replaces the appliance name as the stem
+ * (`Zone One Hot Water`). Two appliances on one prefix keep the appliance
+ * name after it so the tiles stay distinct.
+ *
  * The probe accessories are created unconditionally when `temperatureSensors`
  * is on, rather than only for the probes the appliance turns out to report.
  * Whether a probe exists is only knowable from a live status frame, which
@@ -93,4 +114,4 @@ export declare function validateConfig(config: unknown): ConfigValidationResult;
  * an accessory appearing minutes into a session. Each one disables itself on
  * the first observation that shows nothing behind it.
  */
-export declare function resolveAccessories(devices: readonly ResolvedDevice[], warnings?: string[]): ResolvedAccessory[];
+export declare function resolveAccessories(devices: readonly ResolvedDevice[], warnings?: string[], accessoryPrefix?: string): ResolvedAccessory[];

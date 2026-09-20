@@ -34,7 +34,7 @@ A rejected password is **not** a 401. It is a 200 with the failure in the body. 
 
 The sign-in response carries a `refreshToken`, and `/auth/refresh` exists on the v2.1 path. Neither helps: the AWS IoT credentials are what the MQTT connection actually needs, and no refresh path has been found that reissues them.
 
-So the plugin re-signs in from the top before the credentials expire. The timer is `min(authorizationExpiresIn, authenticationExpiresIn)` minus five minutes, with a 60-second floor. If the cloud's lifetime is not believable (outside 5 minutes to 24 hours), it falls back to 50 minutes. A full sign-in is the only sequence known to produce a working credential set. A brief reconnect on a clock we choose is better than an expiry we do not control.
+So the plugin re-signs in from the top before the credentials expire. The timer is `min(authorizationExpiresIn, authenticationExpiresIn)` minus five minutes, with a 60-second floor. If the cloud's lifetime is not believable (outside 5 minutes to 24 hours), it falls back to 50 minutes. A full sign-in is the only sequence known to produce a working credential set. A brief reconnect on a clock we choose is better than an expiry we do not control. That close is expected: tiles stay current and the operator log does not treat it as an outage.
 
 ### SigV4 is signed with the bare host
 

@@ -62,6 +62,11 @@ export interface NaviLinkRestOptions {
     now?: () => number;
     /** Cancels in-flight calls, so Homebridge shutdown need not wait out a deadline. */
     signal?: AbortSignal;
+    /** One sample per REST attempt, for diagnostics. Never receives the body. */
+    metrics?: (sample: {
+        durationMs: number;
+        ok: boolean;
+    }) => void;
 }
 /** Talks to the NaviLink REST service. */
 export declare class NaviLinkRest {
@@ -69,6 +74,7 @@ export declare class NaviLinkRest {
     private readonly post;
     private readonly now;
     private readonly signal;
+    private readonly metrics;
     constructor(options: NaviLinkRestOptions);
     /**
      * Exchange an email and password for a session.

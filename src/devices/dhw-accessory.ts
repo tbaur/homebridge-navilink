@@ -89,7 +89,7 @@ export class DomesticHotWaterAccessory extends ThermostatAccessory {
         return false
       }
       this.host.log.warn(
-        `${forLog(this.displayName)}: could not change the power state: ${describeError(error)}`,
+        `${forLog(this.displayName)}: power failed: ${describeError(error)}`,
       )
       return false
     }

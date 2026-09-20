@@ -9,6 +9,7 @@
 
 export * from './context'
 export * from './errors'
+export * from './labels'
 export * from './redact'
 export * from './serial'
 export * from './temperature'

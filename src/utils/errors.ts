@@ -96,9 +96,18 @@ export class ProtocolError extends Error {
 
 /** Raised when the cloud could not be reached at all. */
 export class ConnectionError extends Error {
-  constructor(message: string, options?: { cause?: unknown }) {
+  /**
+   * True when this plugin closed the socket on purpose.
+   *
+   * A credential refresh closes the live connection so it can sign in again.
+   * That is not an outage: the tiles stay current and the log stays quiet.
+   */
+  readonly expected: boolean
+
+  constructor(message: string, options?: { cause?: unknown; expected?: boolean }) {
     super(message, options)
     this.name = 'ConnectionError'
+    this.expected = options?.expected === true
   }
 }
 

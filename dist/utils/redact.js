@@ -177,9 +177,9 @@ function maskMacsIn(value, macAddresses) {
  * Show enough of an account name to recognise it, and no more.
  *
  * The email address identifies the user's account, so it is treated as personal
- * data rather than as a harmless label: it is written to the log once at
- * startup, and a support thread should be able to confirm *which* account
- * without publishing it. `someone@example.com` becomes `s\u2026e@example.com`.
+ * data rather than as a harmless label: it is written at debug, and a support
+ * thread should be able to confirm *which* account without publishing it.
+ * `someone@example.com` becomes `s\u2026e@example.com`.
  */
 function maskEmail(value) {
     const at = value.lastIndexOf('@');

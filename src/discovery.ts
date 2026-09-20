@@ -52,6 +52,7 @@ import type { DiscoveredDevice, PluginLogger } from './types'
 import {
   describeError,
   forDisplay,
+  labelAppliance,
   maskMac,
   maskMacsIn,
   raceTimeout,
@@ -196,16 +197,14 @@ export class NaviLinkDiscovery {
     const tokens = await this.rest.signIn(email, password)
     const listed = await this.rest.listDevices({ email, accessToken: tokens.accessToken })
     if (listed.length === 0) {
-      this.log.warn('the NaviLink account has no gateways registered to it')
+      this.log.warn('no gateways on account')
       return
     }
 
     for (const entry of listed) {
       if (entry.connected !== 2) {
-        this.log.warn(
-          `gateway ${maskMac(entry.macAddress)} is offline according to the cloud; `
-          + 'it may not answer this sign-in',
-        )
+        // Cloud labels are often rooms. The settings page can show them; the log cannot.
+        this.log.warn(`${labelAppliance({ mac: entry.macAddress })}: cloud reports offline`)
       }
     }
 
@@ -276,8 +275,7 @@ export class NaviLinkDiscovery {
       const outcome = await raceTimeout(input.work(session), DISCOVERY_BUDGET_MS)
       if (outcome === TIMED_OUT) {
         this.log.warn(
-          'not every appliance answered within '
-          + `${Math.round(DISCOVERY_BUDGET_MS / 1_000)}s; an offline gateway will be missing`,
+          `discovery timeout ${Math.round(DISCOVERY_BUDGET_MS / 1_000)}s; incomplete`,
         )
       }
       return true
@@ -402,9 +400,7 @@ class DiscoverySession {
       responseTopic: responseTopic(gateway.context, 'channelinfo'),
     }))
     if (frame === undefined) {
-      this.log.warn(
-        `gateway ${maskMac(gateway.entry.macAddress)} did not describe itself; it may be offline`,
-      )
+      this.log.warn(`${labelAppliance({ mac: gateway.entry.macAddress })}: no channelinfo`)
       return { channels: [], frame: undefined }
     }
     return { channels: parseChannelInfo(frame), frame }

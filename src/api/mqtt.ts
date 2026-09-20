@@ -244,7 +244,9 @@ export class MqttConnection {
     this.socket = open(url, {
       onOpen: () => this.handleOpen(),
       onMessage: (data) => this.handleData(data),
-      onClose: (reason) => this.fail(new ConnectionError(`the broker closed the connection (${reason})`)),
+      onClose: (reason) => this.fail(
+        new ConnectionError(`NaviLink broker closed the connection (${reason})`),
+      ),
       onError: (error) => this.fail(error),
     })
 
@@ -319,7 +321,10 @@ export class MqttConnection {
     if (this.connected) {
       this.trySend(encodeDisconnect())
     }
-    this.fail(new ConnectionError('the connection was closed by this plugin'), { expected: true })
+    this.fail(
+      new ConnectionError('the connection was closed by this plugin', { expected: true }),
+      { expected: true },
+    )
   }
 
   // --- Internals ------------------------------------------------------------

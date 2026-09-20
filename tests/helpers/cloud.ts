@@ -17,6 +17,7 @@
  */
 
 import type { MqttConnection, MqttConnectionOptions, MqttMessage } from '../../src/api/mqtt'
+import { ConnectionError } from '../../src/utils/errors'
 import { FAKE_ASIA_KEY } from './secrets'
 import type { ListedDevice, NaviLinkRest, NaviLinkSessionTokens } from '../../src/api/rest'
 import { buildTopics, responseTopic, type TopicIdentity } from '../../src/api/topics'
@@ -58,6 +59,9 @@ export class FakeConnection {
   /** Set to make `connect` reject, for the two-signature fallback path. */
   failConnect: Error | undefined
 
+  /** Set to make `publish` reject after recording the frame. */
+  failPublish: Error | undefined
+
   private messageHandler: ((message: MqttMessage) => void) | undefined
 
   private closeHandler: ((error: Error) => void) | undefined
@@ -88,6 +92,9 @@ export class FakeConnection {
 
   publish(topic: string, payload: string): Promise<void> {
     this.published.push({ topic, payload })
+    if (this.failPublish !== undefined) {
+      return Promise.reject(this.failPublish)
+    }
     return Promise.resolve()
   }
 
@@ -96,8 +103,16 @@ export class FakeConnection {
     const wasConnected = this.isConnected
     this.isConnected = false
     if (wasConnected) {
-      this.closeHandler?.(new Error('closed by this plugin'))
+      this.closeHandler?.(
+        new ConnectionError('the connection was closed by this plugin', { expected: true }),
+      )
     }
+  }
+
+  /** End the socket the way a broker drop would: an unexpected close. */
+  drop(reason = 'NaviLink broker closed the connection (code 1006)'): void {
+    this.isConnected = false
+    this.closeHandler?.(new ConnectionError(reason))
   }
 
   /** Deliver a frame the way the broker would. */

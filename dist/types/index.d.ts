@@ -100,6 +100,28 @@ export interface NaviLinkPlatformOptions {
      * declined with one explanatory line.
      */
     readOnly?: boolean;
+    /**
+     * Seconds between diagnostics health lines in the Homebridge log.
+     *
+     * `0` (the default) is off. Otherwise `30`–`3600`. Logs only; nothing is
+     * exposed in HomeKit.
+     */
+    diagnosticsInterval?: number;
+    /**
+     * Also emit each diagnostics report as a JSON line.
+     *
+     * Has no effect while diagnostics are off.
+     */
+    structuredLogs?: boolean;
+    /**
+     * Prefix for every HomeKit accessory name.
+     *
+     * When set, tiles become `Prefix Hot Water`, `Prefix Heating`, and so on.
+     * When left blank, each appliance's own name is used (`Boiler Hot Water`).
+     * A prefix does not change accessory identity, so rooms and automations stay
+     * attached if you rename later.
+     */
+    accessoryPrefix?: string;
 }
 /** Shape of one `platforms[]` entry in `config.json`. */
 export interface NaviLinkPlatformConfig {
@@ -226,6 +248,68 @@ export interface ChannelObservation {
 }
 /** Why a refresh happened, for logging and for suppressing redundant writes. */
 export type RefreshReason = 'push' | 'poll' | 'post-set' | 'startup';
+/** MQTT session lifecycle, as diagnostics reports it. */
+export type MqttTransportState = 'connecting' | 'running' | 'stopped' | 'auth-failed';
+/** Live appliance counts for a diagnostics heartbeat. */
+export interface DeviceGauges {
+    total: number;
+    online: number;
+}
+/** In-memory session gauges the diagnostics collector can read. */
+export interface SessionHealth {
+    mqttState: MqttTransportState;
+    lastMqttEventAt: number | null;
+    expiresAt: number | null;
+    lastRefreshAt: number | null;
+    onlineDeviceIds: readonly string[];
+}
+/** Counters the session reports into the diagnostics collector. */
+export interface SessionMetrics {
+    apiRequest(durationMs: number, ok: boolean): void;
+    mqttReconnect(): void;
+    pollCycle(ok: number, failed: number, durationMs: number): void;
+    command(): void;
+    sessionRefresh(): void;
+    push(): void;
+}
+/** One opt-in diagnostics report. */
+export interface DiagnosticsSnapshot {
+    msg: string;
+    lifecycle: {
+        health: 'healthy' | 'degraded';
+        reasons: string[];
+        uptimeSec: number;
+        pluginVersion: string;
+    };
+    devices: DeviceGauges;
+    transport: {
+        mqttState: MqttTransportState;
+    };
+    polling: {
+        cadenceSec: number;
+        lastDurationMs: number | null;
+        ok: number;
+        failed: number;
+    };
+    token: {
+        expiresInSec: number | null;
+        lastRefreshAt: number | null;
+        refreshes: number;
+    };
+    api: {
+        p50Ms: number;
+        p95Ms: number;
+        requests: number;
+        errors: number;
+    };
+    activity: {
+        reconnects: number;
+        commands: number;
+        pushes: number;
+    };
+    /** Redacted config echo, present only on boot/shutdown snapshots. */
+    config?: Record<string, unknown>;
+}
 /** An accessory handler the platform can drive. */
 export interface RefreshableAccessory {
     readonly deviceId: string;

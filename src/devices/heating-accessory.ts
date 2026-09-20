@@ -68,11 +68,7 @@ export class SpaceHeatingAccessory extends ThermostatAccessory {
       return
     }
     this.hasWarnedNoLoop = true
-    this.host.log.warn(
-      `${forLog(this.displayName)}: this appliance reports no space-heating loop `
-      + '(heatControl is off, or the installer setpoint range is empty). Turn the heating '
-      + 'accessory off in the plugin settings.',
-    )
+    this.host.log.warn(`${forLog(this.displayName)}: no heating loop`)
   }
 
   /** The flow probe: the water going out to the loop. */
@@ -113,8 +109,7 @@ export class SpaceHeatingAccessory extends ThermostatAccessory {
       return true
     } catch (error) {
       this.host.log.warn(
-        `${forLog(this.displayName)}: could not ${on ? 'enable' : 'disable'} heating: `
-        + describeError(error),
+        `${forLog(this.displayName)}: heating ${on ? 'on' : 'off'} failed: ${describeError(error)}`,
       )
       return false
     }
@@ -135,9 +130,7 @@ export class SpaceHeatingAccessory extends ThermostatAccessory {
   private requireHeatingLoop(): void {
     if (!this.hasHeatingLoop()) {
       this.warnNoLoop()
-      throw new ControlRejectedError(
-        'this appliance reports no space-heating loop, so a heating command was not sent',
-      )
+      throw new ControlRejectedError('no heating loop')
     }
   }
 
