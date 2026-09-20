@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.2](https://github.com/tbaur/homebridge-navilink/compare/v1.0.1...v1.0.2) (2026-09-20)
+
+
+### Bug Fixes
+
+* use the cropped 2021 mark as the plugin icon ([#18](https://github.com/tbaur/homebridge-navilink/issues/18)) ([062cc0b](https://github.com/tbaur/homebridge-navilink/commit/062cc0b1dcc2d14de6810a45844dadc2108687d1))
+
 ## [1.0.1](https://github.com/tbaur/homebridge-navilink/compare/v1.0.0...v1.0.1) (2026-09-20)
 
 
