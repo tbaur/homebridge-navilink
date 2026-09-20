@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.3](https://github.com/tbaur/homebridge-navilink/compare/v1.0.2...v1.0.3) (2026-09-20)
+
+
+### Bug Fixes
+
+* fail fast REST sign-in during a sustained cloud outage ([#20](https://github.com/tbaur/homebridge-navilink/issues/20)) ([41f0a39](https://github.com/tbaur/homebridge-navilink/commit/41f0a3963d9333850144d243945b83b6d6ac725c))
+
 ## [1.0.2](https://github.com/tbaur/homebridge-navilink/compare/v1.0.1...v1.0.2) (2026-09-20)
 
 
