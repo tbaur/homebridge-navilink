@@ -1,6 +1,11 @@
 # homebridge-navilink
 
-![Tests](https://github.com/tbaur/homebridge-navilink/actions/workflows/test.yml/badge.svg) ![npm version](https://img.shields.io/npm/v/homebridge-navilink?style=flat-square) ![npm downloads](https://img.shields.io/npm/dt/homebridge-navilink?label=downloads&style=flat-square) ![Node.js](https://img.shields.io/badge/node-22%20%7C%7C%2024%20%7C%7C%2026-green) ![Homebridge](https://img.shields.io/badge/homebridge-2.x-purple) ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
+[![Tests](https://github.com/tbaur/homebridge-navilink/actions/workflows/test.yml/badge.svg)](https://github.com/tbaur/homebridge-navilink/actions/workflows/test.yml)
+[![npm version](https://img.shields.io/npm/v/homebridge-navilink?style=flat-square)](https://www.npmjs.com/package/homebridge-navilink)
+[![npm downloads](https://img.shields.io/npm/dt/homebridge-navilink?label=downloads&style=flat-square)](https://www.npmjs.com/package/homebridge-navilink)
+[![Node.js](https://img.shields.io/badge/node-22%20%7C%7C%2024%20%7C%7C%2026-green)](https://nodejs.org)
+[![Homebridge](https://img.shields.io/badge/homebridge-2.x-purple)](https://homebridge.io)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
 **Navien combi boilers and water heaters in Apple HomeKit.** Hot water and space-heating thermostats, recirculation, faults and temperature probes, with changes arriving as they happen rather than on a polling loop. Verified against an NCB-240E (firmware 4352).
 
