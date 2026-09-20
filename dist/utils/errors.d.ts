@@ -75,3 +75,18 @@ export declare class ControlRejectedError extends Error {
         cause?: unknown;
     });
 }
+/**
+ * The REST circuit breaker is open, so this call was not sent.
+ *
+ * Callers should wait {@link retryAfterMs} before trying again. The session
+ * treats this as a transient outage, not a rejected password.
+ */
+export declare class CircuitBreakerError extends Error {
+    readonly code = "CIRCUIT_OPEN";
+    readonly isRetryable = true;
+    readonly resetTime: Date;
+    constructor(resetTimeMs: number, options?: {
+        cause?: Error;
+    });
+    get retryAfterMs(): number;
+}

@@ -13,8 +13,9 @@
  *   - `rollup()`         — `{ health, reasons[] }`
  *
  * NaviLink variant of the sibling collectors: REST sign-in plus an MQTT
- * session, no circuit breaker. It only reads in-memory state via `readers`;
- * it never touches the network.
+ * session. The REST circuit breaker is included so sustained cloud outages
+ * surface as `circuitBreakerOpen` in the health rollup. It only reads
+ * in-memory state via `readers`; it never touches the network.
  */
 
 import { MQTT_DOWN_GRACE_SEC } from '../settings'
@@ -49,6 +50,7 @@ export interface DiagnosticsReaders {
   tokenExpiresInSec: () => number | null
   tokenLastRefreshAt: () => number | null
   pollingCadenceSec: () => number
+  circuitBreaker: () => { state: string }
 }
 
 interface CollectorOptions {
@@ -66,6 +68,7 @@ interface CounterSnapshot {
   mqttReconnects: number
   commands: number
   pushes: number
+  breakerTrips: number
 }
 
 /** Health classification result. */
@@ -89,6 +92,8 @@ export class DiagnosticsCollector implements SessionMetrics {
   private mqttReconnects = 0
   private commands = 0
   private pushes = 0
+  private breakerTrips = 0
+  private lastTripAt: number | null = null
 
   private lastPollDurationMs: number | null = null
   private readonly latencies: number[] = []
@@ -144,6 +149,12 @@ export class DiagnosticsCollector implements SessionMetrics {
     this.pushes += 1
   }
 
+  /** Record a circuit-breaker trip (transition into the open state). */
+  breakerTrip(): void {
+    this.breakerTrips += 1
+    this.lastTripAt = this.now()
+  }
+
   /** Nearest-rank percentile (0..100) over the recent-latency window. */
   percentile(p: number): number {
     if (this.latencies.length === 0) {
@@ -158,8 +169,9 @@ export class DiagnosticsCollector implements SessionMetrics {
 
   /**
    * Classify current health. Degraded when the MQTT session has been down
-   * longer than the grace window, credentials were rejected, or recent REST
-   * calls are failing at a high rate.
+   * longer than the grace window, credentials were rejected, the REST
+   * circuit breaker is open or probing, or recent REST calls are failing
+   * at a high rate.
    */
   rollup(readers: DiagnosticsReaders): HealthRollup {
     const reasons: string[] = []
@@ -175,6 +187,11 @@ export class DiagnosticsCollector implements SessionMetrics {
       if (beenDownLongEnough) {
         reasons.push('mqttDown')
       }
+    }
+
+    const breakerState = readers.circuitBreaker().state
+    if (breakerState === 'OPEN' || breakerState === 'HALF_OPEN') {
+      reasons.push('circuitBreakerOpen')
     }
 
     const total = this.recentOutcomes.length
@@ -202,6 +219,7 @@ export class DiagnosticsCollector implements SessionMetrics {
       reconnects: current.mqttReconnects - this.marker.mqttReconnects,
       commands: current.commands - this.marker.commands,
       pushes: current.pushes - this.marker.pushes,
+      trips: current.breakerTrips - this.marker.breakerTrips,
     }, readers)
     this.marker = current
     return report
@@ -217,6 +235,7 @@ export class DiagnosticsCollector implements SessionMetrics {
       reconnects: this.mqttReconnects,
       commands: this.commands,
       pushes: this.pushes,
+      trips: this.breakerTrips,
     }, readers)
     report.config = { ...this.configEcho }
     return report
@@ -236,6 +255,7 @@ export class DiagnosticsCollector implements SessionMetrics {
       mqttReconnects: this.mqttReconnects,
       commands: this.commands,
       pushes: this.pushes,
+      breakerTrips: this.breakerTrips,
     }
   }
 
@@ -250,6 +270,7 @@ export class DiagnosticsCollector implements SessionMetrics {
       reconnects: number
       commands: number
       pushes: number
+      trips: number
     },
     readers: DiagnosticsReaders,
   ): DiagnosticsSnapshot {
@@ -285,6 +306,11 @@ export class DiagnosticsCollector implements SessionMetrics {
         reconnects: counters.reconnects,
         commands: counters.commands,
         pushes: counters.pushes,
+      },
+      circuitBreaker: {
+        state: readers.circuitBreaker().state,
+        lastTripAt: this.lastTripAt,
+        trips: counters.trips,
       },
     }
   }

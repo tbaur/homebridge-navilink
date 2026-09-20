@@ -126,3 +126,26 @@ export class ControlRejectedError extends Error {
     this.name = 'ControlRejectedError'
   }
 }
+
+/**
+ * The REST circuit breaker is open, so this call was not sent.
+ *
+ * Callers should wait {@link retryAfterMs} before trying again. The session
+ * treats this as a transient outage, not a rejected password.
+ */
+export class CircuitBreakerError extends Error {
+  readonly code = 'CIRCUIT_OPEN'
+  readonly isRetryable = true
+  readonly resetTime: Date
+
+  constructor(resetTimeMs: number, options?: { cause?: Error }) {
+    const resetTime = new Date(Date.now() + resetTimeMs)
+    super(`Circuit breaker is open. Service unavailable until ${resetTime.toISOString()}`, options)
+    this.name = 'CircuitBreakerError'
+    this.resetTime = resetTime
+  }
+
+  get retryAfterMs(): number {
+    return Math.max(0, this.resetTime.getTime() - Date.now())
+  }
+}

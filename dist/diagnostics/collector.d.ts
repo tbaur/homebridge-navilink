@@ -13,8 +13,9 @@
  *   - `rollup()`         — `{ health, reasons[] }`
  *
  * NaviLink variant of the sibling collectors: REST sign-in plus an MQTT
- * session, no circuit breaker. It only reads in-memory state via `readers`;
- * it never touches the network.
+ * session. The REST circuit breaker is included so sustained cloud outages
+ * surface as `circuitBreakerOpen` in the health rollup. It only reads
+ * in-memory state via `readers`; it never touches the network.
  */
 import type { DeviceGauges, DiagnosticsSnapshot, MqttTransportState, NaviLinkPlatformConfig, SessionMetrics } from '../types';
 /**
@@ -28,6 +29,9 @@ export interface DiagnosticsReaders {
     tokenExpiresInSec: () => number | null;
     tokenLastRefreshAt: () => number | null;
     pollingCadenceSec: () => number;
+    circuitBreaker: () => {
+        state: string;
+    };
 }
 interface CollectorOptions {
     pluginVersion: string;
@@ -53,6 +57,8 @@ export declare class DiagnosticsCollector implements SessionMetrics {
     private mqttReconnects;
     private commands;
     private pushes;
+    private breakerTrips;
+    private lastTripAt;
     private lastPollDurationMs;
     private readonly latencies;
     private readonly recentOutcomes;
@@ -64,12 +70,15 @@ export declare class DiagnosticsCollector implements SessionMetrics {
     command(): void;
     sessionRefresh(): void;
     push(): void;
+    /** Record a circuit-breaker trip (transition into the open state). */
+    breakerTrip(): void;
     /** Nearest-rank percentile (0..100) over the recent-latency window. */
     percentile(p: number): number;
     /**
      * Classify current health. Degraded when the MQTT session has been down
-     * longer than the grace window, credentials were rejected, or recent REST
-     * calls are failing at a high rate.
+     * longer than the grace window, credentials were rejected, the REST
+     * circuit breaker is open or probing, or recent REST calls are failing
+     * at a high rate.
      */
     rollup(readers: DiagnosticsReaders): HealthRollup;
     buildHeartbeat(readers: DiagnosticsReaders): DiagnosticsSnapshot;

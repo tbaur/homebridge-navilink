@@ -14,7 +14,7 @@
 
 import type { JsonPost } from '../../src/api/http'
 import { NaviLinkRest } from '../../src/api/rest'
-import { AuthenticationError, ProtocolError } from '../../src/utils/errors'
+import { AuthenticationError, CircuitBreakerError, ConnectionError, ProtocolError } from '../../src/utils/errors'
 import { FAKE_ASIA_KEY } from '../helpers/secrets'
 
 function makeLog() {
@@ -351,5 +351,77 @@ describe('diagnostics metrics', () => {
     )
     await expect(failing.rest.signIn('someone@example.com', 'secret')).rejects.toThrow()
     expect(samples[1]).toEqual({ durationMs: 0, ok: false })
+  })
+})
+
+describe('circuit breaker', () => {
+  it('opens after five connection failures and then fails fast', async () => {
+    const log = makeLog()
+    const post: JsonPost = async () => {
+      throw new ConnectionError('connect timed out after 5000ms')
+    }
+    const rest = new NaviLinkRest({ log, post, now: () => 1_700_000_000_000 })
+    for (let index = 0; index < 5; index += 1) {
+      await expect(rest.signIn('someone@example.com', 'secret')).rejects.toThrow(ConnectionError)
+    }
+    expect(log.warn).toHaveBeenCalledWith('Circuit breaker CLOSED -> OPEN')
+    expect(rest.getCircuitBreakerStatus().state).toBe('OPEN')
+
+    await expect(rest.signIn('someone@example.com', 'secret')).rejects.toThrow(CircuitBreakerError)
+    expect(log.debug.mock.calls.filter((call) => call[0] === 'POST /user/sign-in')).toHaveLength(5)
+  })
+
+  it('does not trip on firmware read failures', async () => {
+    const log = makeLog()
+    const post: JsonPost = async () => {
+      throw new ConnectionError('connect timed out after 5000ms')
+    }
+    const rest = new NaviLinkRest({ log, post, now: () => 1_700_000_000_000 })
+    const input = {
+      email: 'someone@example.com',
+      accessToken: 't',
+      macAddress: 'a1b2c3d4e5f6',
+      additionalValue: '',
+    }
+    for (let index = 0; index < 5; index += 1) {
+      await expect(rest.readFirmware(input)).rejects.toThrow(ConnectionError)
+    }
+    expect(rest.getCircuitBreakerStatus().state).toBe('CLOSED')
+    expect(log.warn).not.toHaveBeenCalledWith('Circuit breaker CLOSED -> OPEN')
+  })
+
+  it('does not trip on a rejected password', async () => {
+    const { rest, log } = build([
+      { status: 200, body: { code: 401, msg: 'INVALID_USER_OR_PASSWORD' } },
+    ])
+    await expect(rest.signIn('someone@example.com', 'secret')).rejects.toThrow(AuthenticationError)
+    expect(rest.getCircuitBreakerStatus().state).toBe('CLOSED')
+    expect(log.warn).not.toHaveBeenCalledWith('Circuit breaker CLOSED -> OPEN')
+  })
+
+  it('logs HALF_OPEN then CLOSED when a probe succeeds', async () => {
+    jest.useFakeTimers()
+    try {
+      const log = makeLog()
+      let remainingFailures = 5
+      const post: JsonPost = async () => {
+        if (remainingFailures > 0) {
+          remainingFailures -= 1
+          throw new ConnectionError('connect timed out after 5000ms')
+        }
+        return { status: 200, body: JSON.stringify(signInBody()) }
+      }
+      const rest = new NaviLinkRest({ log, post, now: () => Date.now() })
+      for (let index = 0; index < 5; index += 1) {
+        await expect(rest.signIn('someone@example.com', 'secret')).rejects.toThrow(ConnectionError)
+      }
+      jest.advanceTimersByTime(30_000)
+      await rest.signIn('someone@example.com', 'secret')
+      expect(log.info).toHaveBeenCalledWith('Circuit breaker OPEN -> HALF_OPEN')
+      expect(log.info).toHaveBeenCalledWith('Circuit breaker HALF_OPEN -> CLOSED')
+      expect(rest.getCircuitBreakerStatus().state).toBe('CLOSED')
+    } finally {
+      jest.useRealTimers()
+    }
   })
 })

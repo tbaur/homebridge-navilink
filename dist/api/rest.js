@@ -29,6 +29,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.NaviLinkRest = void 0;
 const settings_1 = require("../settings");
 const errors_1 = require("../utils/errors");
+const circuit_breaker_1 = require("./circuit-breaker");
 const http_1 = require("./http");
 /**
  * How long a session lasts when the cloud's answer is not believable.
@@ -55,12 +56,24 @@ class NaviLinkRest {
     now;
     signal;
     metrics;
+    onCircuitOpen;
+    circuitBreaker;
     constructor(options) {
         this.log = options.log;
         this.post = options.post ?? http_1.postJson;
         this.now = options.now ?? Date.now;
         this.signal = options.signal;
         this.metrics = options.metrics;
+        this.onCircuitOpen = options.onCircuitOpen;
+        this.circuitBreaker = new circuit_breaker_1.CircuitBreaker({
+            onStateChange: (from, to) => {
+                this.logCircuitTransition(from, to);
+            },
+        });
+    }
+    /** Live breaker status for diagnostics. Never reads the network. */
+    getCircuitBreakerStatus() {
+        return this.circuitBreaker.getStatus();
     }
     /**
      * Exchange an email and password for a session.
@@ -76,43 +89,45 @@ class NaviLinkRest {
             // COMMON_BAD_REQUEST, which looks like a credential problem.
             throw new TypeError('sign-in needs an email and a password as two strings');
         }
-        const response = await this.call('/user/sign-in', { userId: email, password });
-        const body = this.readBody(response.body, 'sign-in');
-        const data = asRecord(body.data);
-        const token = asRecord(data?.token);
-        const accessToken = asNonEmptyString(token?.accessToken);
-        if (accessToken === undefined || token === undefined || data === undefined) {
-            // Deliberately not keyed on the status code. **This API answers a
-            // rejected password with HTTP 200** and an error in the body, so a
-            // status check alone classifies a wrong password as a transient
-            // protocol fault, and then retries it every few seconds until the
-            // account is locked. The presence of a token is the only reliable
-            // discriminator, so that is what decides success here.
-            throw this.signInFailure(response.status, body);
-        }
-        const accessKeyId = asNonEmptyString(token.accessKeyId);
-        const secretKey = asNonEmptyString(token.secretKey);
-        const sessionToken = asNonEmptyString(token.sessionToken);
-        if (accessKeyId === undefined || secretKey === undefined || sessionToken === undefined) {
-            throw new errors_1.ProtocolError('the sign-in response carried no AWS IoT credentials, so live status is not available');
-        }
-        const userSeq = readUserSeq(data);
-        if (userSeq === undefined) {
-            throw new errors_1.ProtocolError('the sign-in response carried no account identifier');
-        }
-        return {
-            userSeq,
-            accessToken,
-            refreshToken: asNonEmptyString(token.refreshToken),
-            credentials: {
-                accessKeyId,
-                secretKey,
-                sessionToken,
-                endpoint: settings_1.IOT_ENDPOINT,
-                region: settings_1.IOT_REGION,
-            },
-            expiresAt: this.now() + this.sessionLifetimeMs(token),
-        };
+        return this.guarded(async () => {
+            const response = await this.call('/user/sign-in', { userId: email, password });
+            const body = this.readBody(response.body, 'sign-in');
+            const data = asRecord(body.data);
+            const token = asRecord(data?.token);
+            const accessToken = asNonEmptyString(token?.accessToken);
+            if (accessToken === undefined || token === undefined || data === undefined) {
+                // Deliberately not keyed on the status code. **This API answers a
+                // rejected password with HTTP 200** and an error in the body, so a
+                // status check alone classifies a wrong password as a transient
+                // protocol fault, and then retries it every few seconds until the
+                // account is locked. The presence of a token is the only reliable
+                // discriminator, so that is what decides success here.
+                throw this.signInFailure(response.status, body);
+            }
+            const accessKeyId = asNonEmptyString(token.accessKeyId);
+            const secretKey = asNonEmptyString(token.secretKey);
+            const sessionToken = asNonEmptyString(token.sessionToken);
+            if (accessKeyId === undefined || secretKey === undefined || sessionToken === undefined) {
+                throw new errors_1.ProtocolError('the sign-in response carried no AWS IoT credentials, so live status is not available');
+            }
+            const userSeq = readUserSeq(data);
+            if (userSeq === undefined) {
+                throw new errors_1.ProtocolError('the sign-in response carried no account identifier');
+            }
+            return {
+                userSeq,
+                accessToken,
+                refreshToken: asNonEmptyString(token.refreshToken),
+                credentials: {
+                    accessKeyId,
+                    secretKey,
+                    sessionToken,
+                    endpoint: settings_1.IOT_ENDPOINT,
+                    region: settings_1.IOT_REGION,
+                },
+                expiresAt: this.now() + this.sessionLifetimeMs(token),
+            };
+        });
     }
     /**
      * List the gateways on the account.
@@ -135,31 +150,33 @@ class NaviLinkRest {
     }
     /** One page of the device list, already parsed. */
     async listDevicePage(input, offset) {
-        const response = await this.call('/device/list', { offset, count: DEVICE_LIST_PAGE_SIZE, userId: input.email }, input.accessToken);
-        const body = this.readBody(response.body, 'device list');
-        if (response.status === 401 || response.status === 403) {
-            throw new errors_1.AuthenticationError('the cloud rejected the session token when listing devices');
-        }
-        if (response.status !== 200) {
-            throw new errors_1.ProtocolError(`the device list failed: ${describeApiFailure(response.status, body)}`);
-        }
-        // Two shapes have been seen: a bare array, and an object wrapping one.
-        // Both are accepted rather than one being declared correct, because there
-        // is no specification to be right about.
-        const data = body.data;
-        const raw = Array.isArray(data)
-            ? data
-            : (asRecord(data)?.deviceList ?? asRecord(data)?.devices);
-        if (!Array.isArray(raw)) {
-            throw new errors_1.ProtocolError('the device list response did not contain a list of devices');
-        }
-        return {
-            entries: raw.flatMap((entry) => {
-                const device = this.readListedDevice(entry);
-                return device === undefined ? [] : [device];
-            }),
-            isFull: raw.length >= DEVICE_LIST_PAGE_SIZE,
-        };
+        return this.guarded(async () => {
+            const response = await this.call('/device/list', { offset, count: DEVICE_LIST_PAGE_SIZE, userId: input.email }, input.accessToken);
+            const body = this.readBody(response.body, 'device list');
+            if (response.status === 401 || response.status === 403) {
+                throw new errors_1.AuthenticationError('the cloud rejected the session token when listing devices');
+            }
+            if (response.status !== 200) {
+                throw new errors_1.ProtocolError(`the device list failed: ${describeApiFailure(response.status, body)}`);
+            }
+            // Two shapes have been seen: a bare array, and an object wrapping one.
+            // Both are accepted rather than one being declared correct, because there
+            // is no specification to be right about.
+            const data = body.data;
+            const raw = Array.isArray(data)
+                ? data
+                : (asRecord(data)?.deviceList ?? asRecord(data)?.devices);
+            if (!Array.isArray(raw)) {
+                throw new errors_1.ProtocolError('the device list response did not contain a list of devices');
+            }
+            return {
+                entries: raw.flatMap((entry) => {
+                    const device = this.readListedDevice(entry);
+                    return device === undefined ? [] : [device];
+                }),
+                isFull: raw.length >= DEVICE_LIST_PAGE_SIZE,
+            };
+        });
     }
     /**
      * Read a single device's detail.
@@ -170,6 +187,8 @@ class NaviLinkRest {
      * read, so they cannot reach a log, an accessory context or a capture.
      */
     async readFirmware(input) {
+        // Not behind the breaker. Firmware is optional, the session swallows
+        // failures, and a flaky device/info must not trip OPEN after MQTT is live.
         const response = await this.call('/device/info', {
             macAddress: input.macAddress,
             additionalValue: input.additionalValue,
@@ -207,6 +226,49 @@ class NaviLinkRest {
         catch (error) {
             this.metrics?.({ durationMs: this.now() - started, ok: false });
             throw error;
+        }
+    }
+    /**
+     * Run one REST logical attempt behind the circuit breaker.
+     *
+     * Pre-flight OPEN rejections do not count as API samples: nothing was sent.
+     * Connection and protocol errors trip the breaker; a rejected password does
+     * not. HALF_OPEN treats every terminal rejection as a failed probe so the
+     * slot cannot wedge.
+     */
+    async guarded(work) {
+        if (!this.circuitBreaker.canRequest()) {
+            const status = this.circuitBreaker.getStatus();
+            throw new errors_1.CircuitBreakerError(status.remainingResetTime ?? circuit_breaker_1.DEFAULT_CIRCUIT_BREAKER_CONFIG.resetTimeout);
+        }
+        if (this.circuitBreaker.state === circuit_breaker_1.CircuitState.HALF_OPEN) {
+            this.circuitBreaker.trackHalfOpenRequest();
+        }
+        try {
+            const result = await work();
+            this.circuitBreaker.recordSuccess();
+            return result;
+        }
+        catch (error) {
+            if (this.circuitBreaker.state === circuit_breaker_1.CircuitState.HALF_OPEN || isCircuitBreakerFailure(error)) {
+                this.circuitBreaker.recordFailure();
+            }
+            throw error;
+        }
+    }
+    /**
+     * Surface circuit-breaker transitions so operators can see when NaviLink
+     * REST is being treated as unavailable and when it recovers. OPEN is warn;
+     * HALF_OPEN (probe) and CLOSED (recovery) are info.
+     */
+    logCircuitTransition(from, to) {
+        const message = `Circuit breaker ${from} -> ${to}`;
+        if (to === circuit_breaker_1.CircuitState.OPEN) {
+            this.log.warn(message);
+            this.onCircuitOpen?.();
+        }
+        else {
+            this.log.info(message);
         }
     }
     readBody(text, what) {
@@ -289,6 +351,14 @@ class NaviLinkRest {
     }
 }
 exports.NaviLinkRest = NaviLinkRest;
+/**
+ * Errors that should count against the circuit breaker: the cloud could not
+ * be reached, or it answered with something we cannot parse. A rejected
+ * password is the user's problem, not service health.
+ */
+function isCircuitBreakerFailure(error) {
+    return error instanceof errors_1.ConnectionError || error instanceof errors_1.ProtocolError;
+}
 /** Describe an API failure without quoting a body that may hold a token. */
 function describeApiFailure(status, body) {
     const message = asNonEmptyString(body.msg);

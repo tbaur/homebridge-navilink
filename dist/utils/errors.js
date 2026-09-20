@@ -19,7 +19,7 @@
  * error message or it does not reach it at all.
  */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ControlRejectedError = exports.ConnectionError = exports.ProtocolError = exports.AuthenticationError = void 0;
+exports.CircuitBreakerError = exports.ControlRejectedError = exports.ConnectionError = exports.ProtocolError = exports.AuthenticationError = void 0;
 exports.describeError = describeError;
 const redact_1 = require("./redact");
 /** Longest description produced, so a hostile endpoint cannot flood the log. */
@@ -124,3 +124,24 @@ class ControlRejectedError extends Error {
     }
 }
 exports.ControlRejectedError = ControlRejectedError;
+/**
+ * The REST circuit breaker is open, so this call was not sent.
+ *
+ * Callers should wait {@link retryAfterMs} before trying again. The session
+ * treats this as a transient outage, not a rejected password.
+ */
+class CircuitBreakerError extends Error {
+    code = 'CIRCUIT_OPEN';
+    isRetryable = true;
+    resetTime;
+    constructor(resetTimeMs, options) {
+        const resetTime = new Date(Date.now() + resetTimeMs);
+        super(`Circuit breaker is open. Service unavailable until ${resetTime.toISOString()}`, options);
+        this.name = 'CircuitBreakerError';
+        this.resetTime = resetTime;
+    }
+    get retryAfterMs() {
+        return Math.max(0, this.resetTime.getTime() - Date.now());
+    }
+}
+exports.CircuitBreakerError = CircuitBreakerError;

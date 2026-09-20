@@ -54,17 +54,22 @@ function formatReasons(reasons) {
  * Concise summary matching the sibling plugins:
  * `Health: healthy | devices 1/1 | mqtt live | api p50 12ms p95 40ms (req 3, err 0)`.
  *
- * The heartbeat uses the short `mqtt` token. Standalone lifecycle lines keep
- * `Publish-subscribe (mqtt)` so a lone `up` / `recovered` still names the channel.
+ * A non-CLOSED REST breaker inserts `breaker OPEN` (or `HALF_OPEN`) after
+ * devices, matching the sibling plugins. The heartbeat uses the short `mqtt`
+ * token. Standalone lifecycle lines keep `Publish-subscribe (mqtt)` so a
+ * lone `up` / `recovered` still names the channel.
  */
 function formatDiagnosticLine(report) {
-    const { lifecycle, devices, transport, api } = report;
-    return [
+    const { lifecycle, devices, circuitBreaker, transport, api } = report;
+    const parts = [
         `${diagnosticLabel(report.msg)}: ${lifecycle.health}${formatReasons(lifecycle.reasons)}`,
         `devices ${devices.online}/${devices.total}`,
-        `mqtt ${formatMqttTransportState(transport.mqttState)}`,
-        `api p50 ${api.p50Ms}ms p95 ${api.p95Ms}ms (req ${api.requests}, err ${api.errors})`,
-    ].join(' | ');
+    ];
+    if (circuitBreaker.state !== 'CLOSED') {
+        parts.push(`breaker ${circuitBreaker.state}`);
+    }
+    parts.push(`mqtt ${formatMqttTransportState(transport.mqttState)}`, `api p50 ${api.p50Ms}ms p95 ${api.p95Ms}ms (req ${api.requests}, err ${api.errors})`);
+    return parts.join(' | ');
 }
 /** State-only line for a healthy/degraded flip. The heartbeat already has the body. */
 function formatHealthTransitionLine(report) {

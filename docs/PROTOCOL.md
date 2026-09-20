@@ -30,6 +30,8 @@ A rejected password is **not** a 401. It is a 200 with the failure in the body. 
 
 `src/api/rest.ts` maps `USER_NOT_FOUND` and `INVALID_USER_PASSWORD` to a fatal error that stops the session for good. Anything else stays retryable, because guessing that an unfamiliar error is a bad credential would stop the plugin recovering from something temporary.
 
+Retryable is not the same as hammering. Sign-in and the device list sit behind a circuit breaker: five connection or protocol failures in a minute open it (`Circuit breaker CLOSED -> OPEN`), later calls fail fast until a cooldown, then a single probe. A rejected password does not trip it. Firmware (`device/info`) is not behind it either: that read is optional, the session swallows failures, and a flaky info endpoint must not open the breaker after MQTT is already live.
+
 ### There is no usable token refresh
 
 The sign-in response carries a `refreshToken`, and `/auth/refresh` exists on the v2.1 path. Neither helps: the AWS IoT credentials are what the MQTT connection actually needs, and no refresh path has been found that reissues them.

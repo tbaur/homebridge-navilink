@@ -34,7 +34,18 @@ import {
   REST_TIMEOUT_MS,
 } from '../settings'
 import type { PluginLogger } from '../types'
-import { AuthenticationError, ProtocolError } from '../utils/errors'
+import {
+  AuthenticationError,
+  CircuitBreakerError,
+  ConnectionError,
+  ProtocolError,
+} from '../utils/errors'
+import {
+  CircuitBreaker,
+  CircuitState,
+  DEFAULT_CIRCUIT_BREAKER_CONFIG,
+  type CircuitBreakerStatus,
+} from './circuit-breaker'
 import { parseJsonBody, postJson, type JsonPost } from './http'
 import type { IotCredentials } from './sigv4'
 
@@ -100,6 +111,8 @@ export interface NaviLinkRestOptions {
   signal?: AbortSignal
   /** One sample per REST attempt, for diagnostics. Never receives the body. */
   metrics?: (sample: { durationMs: number; ok: boolean }) => void
+  /** Fired when the breaker transitions into OPEN, so diagnostics can count a trip. */
+  onCircuitOpen?: () => void
 }
 
 /** Talks to the NaviLink REST service. */
@@ -114,12 +127,27 @@ export class NaviLinkRest {
 
   private readonly metrics: NaviLinkRestOptions['metrics']
 
+  private readonly onCircuitOpen: (() => void) | undefined
+
+  private readonly circuitBreaker: CircuitBreaker
+
   constructor(options: NaviLinkRestOptions) {
     this.log = options.log
     this.post = options.post ?? postJson
     this.now = options.now ?? Date.now
     this.signal = options.signal
     this.metrics = options.metrics
+    this.onCircuitOpen = options.onCircuitOpen
+    this.circuitBreaker = new CircuitBreaker({
+      onStateChange: (from, to) => {
+        this.logCircuitTransition(from, to)
+      },
+    })
+  }
+
+  /** Live breaker status for diagnostics. Never reads the network. */
+  getCircuitBreakerStatus(): CircuitBreakerStatus {
+    return this.circuitBreaker.getStatus()
   }
 
   /**
@@ -136,6 +164,7 @@ export class NaviLinkRest {
       // COMMON_BAD_REQUEST, which looks like a credential problem.
       throw new TypeError('sign-in needs an email and a password as two strings')
     }
+    return this.guarded(async () => {
     const response = await this.call('/user/sign-in', { userId: email, password })
     const body = this.readBody(response.body, 'sign-in')
 
@@ -177,6 +206,7 @@ export class NaviLinkRest {
       },
       expiresAt: this.now() + this.sessionLifetimeMs(token),
     }
+    })
   }
 
   /**
@@ -206,6 +236,7 @@ export class NaviLinkRest {
     input: { email: string; accessToken: string },
     offset: number,
   ): Promise<{ entries: ListedDevice[]; isFull: boolean }> {
+    return this.guarded(async () => {
     const response = await this.call(
       '/device/list',
       { offset, count: DEVICE_LIST_PAGE_SIZE, userId: input.email },
@@ -237,6 +268,7 @@ export class NaviLinkRest {
       }),
       isFull: raw.length >= DEVICE_LIST_PAGE_SIZE,
     }
+    })
   }
 
   /**
@@ -253,6 +285,8 @@ export class NaviLinkRest {
     macAddress: string
     additionalValue: string
   }): Promise<string | undefined> {
+    // Not behind the breaker. Firmware is optional, the session swallows
+    // failures, and a flaky device/info must not trip OPEN after MQTT is live.
     const response = await this.call('/device/info', {
       macAddress: input.macAddress,
       additionalValue: input.additionalValue,
@@ -294,6 +328,51 @@ export class NaviLinkRest {
     } catch (error) {
       this.metrics?.({ durationMs: this.now() - started, ok: false })
       throw error
+    }
+  }
+
+  /**
+   * Run one REST logical attempt behind the circuit breaker.
+   *
+   * Pre-flight OPEN rejections do not count as API samples: nothing was sent.
+   * Connection and protocol errors trip the breaker; a rejected password does
+   * not. HALF_OPEN treats every terminal rejection as a failed probe so the
+   * slot cannot wedge.
+   */
+  private async guarded<T>(work: () => Promise<T>): Promise<T> {
+    if (!this.circuitBreaker.canRequest()) {
+      const status = this.circuitBreaker.getStatus()
+      throw new CircuitBreakerError(
+        status.remainingResetTime ?? DEFAULT_CIRCUIT_BREAKER_CONFIG.resetTimeout,
+      )
+    }
+    if (this.circuitBreaker.state === CircuitState.HALF_OPEN) {
+      this.circuitBreaker.trackHalfOpenRequest()
+    }
+    try {
+      const result = await work()
+      this.circuitBreaker.recordSuccess()
+      return result
+    } catch (error) {
+      if (this.circuitBreaker.state === CircuitState.HALF_OPEN || isCircuitBreakerFailure(error)) {
+        this.circuitBreaker.recordFailure()
+      }
+      throw error
+    }
+  }
+
+  /**
+   * Surface circuit-breaker transitions so operators can see when NaviLink
+   * REST is being treated as unavailable and when it recovers. OPEN is warn;
+   * HALF_OPEN (probe) and CLOSED (recovery) are info.
+   */
+  private logCircuitTransition(from: CircuitState, to: CircuitState): void {
+    const message = `Circuit breaker ${from} -> ${to}`
+    if (to === CircuitState.OPEN) {
+      this.log.warn(message)
+      this.onCircuitOpen?.()
+    } else {
+      this.log.info(message)
     }
   }
 
@@ -389,6 +468,15 @@ export class NaviLinkRest {
       connected: typeof record.connected === 'number' ? record.connected : 0,
     }
   }
+}
+
+/**
+ * Errors that should count against the circuit breaker: the cloud could not
+ * be reached, or it answered with something we cannot parse. A rejected
+ * password is the user's problem, not service health.
+ */
+function isCircuitBreakerFailure(error: unknown): boolean {
+  return error instanceof ConnectionError || error instanceof ProtocolError
 }
 
 /** Describe an API failure without quoting a body that may hold a token. */

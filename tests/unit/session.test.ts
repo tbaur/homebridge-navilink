@@ -16,7 +16,7 @@ import { buildTopics } from '../../src/api/topics'
 import { NaviLinkSession, type ControlSpec } from '../../src/session'
 import { CONTROL_LOCKOUT_MS } from '../../src/settings'
 import type { ChannelObservation, RefreshReason, ResolvedDevice, SessionMetrics } from '../../src/types'
-import { AuthenticationError, ControlRejectedError } from '../../src/utils'
+import { AuthenticationError, CircuitBreakerError, ControlRejectedError } from '../../src/utils'
 import {
   DEVICE_ID,
   FakeConnection,
@@ -683,6 +683,27 @@ describe('an unexpected drop', () => {
     await drain()
 
     expect(built.log.calls.some((line) => line === 'info Publish-subscribe (mqtt) up')).toBe(true)
+
+    const stopping = built.session.stop()
+    jest.advanceTimersByTime(100)
+    await stopping
+  })
+
+  it('waits out a REST circuit-breaker cooldown without a session-failed line', async () => {
+    jest.useFakeTimers({ doNotFake: ['nextTick'] })
+    const rest = fakeRest()
+    rest.failNextSignIn(new CircuitBreakerError(2_000))
+    const built = build({ rest })
+    built.session.start()
+    await drain()
+
+    expect(built.unreachable).toHaveLength(1)
+    expect(built.log.calls.some((line) => line.includes('session failed'))).toBe(false)
+    expect(built.log.calls.some((line) => line === 'info reconnect in 2s')).toBe(true)
+
+    jest.advanceTimersByTime(2_000)
+    await drain()
+    expect(rest.calls.signIn.length).toBeGreaterThan(1)
 
     const stopping = built.session.stop()
     jest.advanceTimersByTime(100)

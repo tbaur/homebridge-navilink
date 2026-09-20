@@ -13,17 +13,6 @@ Releases are automated with [release-please](https://github.com/googleapis/relea
 7. **Merge it.** `release.yml` then tags `vX.Y.Z`, publishes the GitHub Release, and runs the `publish` job (install → build → lint → test → `npm publish --dry-run` → `npm publish` with provenance).
 8. **Confirm it landed:** `npm view homebridge-navilink version`. The registry can lag a few minutes behind a successful publish.
 
-## Homebridge verified `/check`
-
-The [homebridge/plugins](https://github.com/homebridge/plugins) `/check` installs the **published** package. It fails until all of these are true for the same version:
-
-- The package is on npm and is not deprecated
-- The GitHub repository is public, not archived, and has issues enabled
-- That version has a GitHub Release
-- `package.json` on the default branch matches the npm version
-
-release-please does the last two on every release. File the verification issue against the published version; `/check` installs that package and compares it to `package.json` on the default branch.
-
 ## Before a release
 
 The test suite never touches the network, so it cannot tell you the cloud still behaves the way this plugin assumes. Against a real account, read-only:
