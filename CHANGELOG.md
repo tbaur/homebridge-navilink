@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.3](https://github.com/tbaur/homebridge-navilink/compare/v0.1.2...v0.1.3) (2026-09-20)
+
+
+### Bug Fixes
+
+* use a diagnostics slider and name the mqtt channel ([#8](https://github.com/tbaur/homebridge-navilink/issues/8)) ([324d700](https://github.com/tbaur/homebridge-navilink/commit/324d7006dda002ad0469599012c67222558aae53))
+
 ## [0.1.2](https://github.com/tbaur/homebridge-navilink/compare/v0.1.1...v0.1.2) (2026-09-20)
 
 
