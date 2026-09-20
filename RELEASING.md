@@ -22,7 +22,7 @@ The [homebridge/plugins](https://github.com/homebridge/plugins) `/check` install
 - That version has a GitHub Release
 - `package.json` on the default branch matches the npm version
 
-release-please does the last two on every release after the first. For the first `/check`, publish `0.1.0` and create the `v0.1.0` GitHub Release before opening the verification issue.
+release-please does the last two on every release. File the verification issue against the published version; `/check` installs that package and compares it to `package.json` on the default branch.
 
 ## Before a release
 
@@ -36,7 +36,7 @@ node scripts/pseudonymise.js --in tests/fixtures --check
 
 `smoke.js` exercises the whole path end to end: sign-in, the AWS credential exchange, the SigV4 URL, the MQTT handshake, identity uniqueness, the subscription and both read commands. An interface nobody publishes can change without warning. This is the only check that would notice. `pseudonymise.js --check` confirms that nothing identifying has crept into the committed fixtures. Use `node scripts/capture-fixture.js --redact` when filing a bug report, not as the pre-release recipe.
 
-`CHANGELOG.md` stays as the release-please stub until the first Release PR lands. Do not edit it by hand.
+Do not edit `CHANGELOG.md` by hand. release-please writes it on the Release PR.
 
 ## Approve the Release PR checks
 
@@ -65,7 +65,7 @@ A healthy Release PR changes exactly four files: `package.json`, `package-lock.j
 | `feat!:` / `fix!:` or a `BREAKING CHANGE:` footer | `feat!: drop Node 22` | major (1.0.0 → 2.0.0) |
 | `chore:`, `docs:`, `refactor:`, `test:`, `ci:` | `docs: fix typo` | no release |
 
-A `Release-As: X.Y.Z` footer on the squash commit forces that version. That is how 1.0.0 is cut. After 1.0.0 the usual `feat` / major rules apply. The `bump-patch-for-minor-pre-major` and `bump-minor-pre-major` flags in `release-please-config.json` only affect a 0.x line.
+A `Release-As: X.Y.Z` footer on the squash commit forces that version. The 1.0.0 line was opened that way. After 1.0.0, `feat:` is a minor and a breaking change is a major. The `bump-patch-for-minor-pre-major` and `bump-minor-pre-major` flags in `release-please-config.json` only affect a 0.x line.
 
 Dependabot titles runtime bumps `fix:` and development bumps `chore:` (see `.github/dependabot.yml`), so a dependency users install cuts a patch release on its own while a test dependency waits for the next release to carry it.
 
