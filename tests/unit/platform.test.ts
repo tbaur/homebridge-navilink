@@ -30,6 +30,7 @@ interface SessionSpy {
   observationFor: jest.Mock
   firmwareFor: jest.Mock
   health: jest.Mock
+  circuitBreakerState: jest.Mock
   applyOptimisticWrite: jest.Mock
   emitObservation(deviceId: string, value: ReturnType<typeof observation>): void
   emitUnreachable(error: unknown): void
@@ -57,6 +58,7 @@ beforeEach(() => {
         lastRefreshAt: Date.now(),
         onlineDeviceIds: [DEVICE_ID],
       }),
+      circuitBreakerState: jest.fn().mockReturnValue('CLOSED'),
       applyOptimisticWrite: jest.fn(),
       emitObservation: (deviceId, value) => {
         ;(onObservation as unknown as (
@@ -308,8 +310,7 @@ describe('unusable configuration', () => {
     expect(sessions).toHaveLength(0)
   })
 
-  it('loads and stays up when Homebridge /check starts it with only the platform name', () => {
-    // homebridge/plugins `/check` scenario "platform only".
+  it('loads and stays up when the config has only the platform name', () => {
     const built = build({
       config: { platform: 'NaviLink' } as PlatformConfig,
     })
@@ -318,9 +319,7 @@ describe('unusable configuration', () => {
       .toBe(true)
   })
 
-  it('loads and stays up when Homebridge /check starts it with only the required name', () => {
-    // homebridge/plugins `/check` scenario "minimal required": the schema
-    // requires only `name`, so that is all the checker sends.
+  it('loads and stays up when the config has only the required name', () => {
     const built = build({
       config: {
         platform: 'NaviLink',
@@ -405,11 +404,8 @@ describe('unusable configuration', () => {
   })
 })
 
-describe('Homebridge /check generated full config', () => {
-  it('starts a session rather than throwing when the checker fills every schema field', () => {
-    // homebridge/plugins `/check` scenario "full config": every property
-    // generated from the schema. Defaults and examples are what the checker
-    // actually sends.
+describe('schema-complete config', () => {
+  it('starts a session rather than throwing when every schema field is present', () => {
     const built = build({
       config: {
         platform: 'NaviLink',

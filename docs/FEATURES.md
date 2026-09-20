@@ -28,6 +28,7 @@ A checklist of what is built. The plugin aims to cover everything about a Navien
 - ✅ **Never loses your rooms:** a broken config disables the platform without unregistering anything (`platform disabled; cached accessories kept`)
 - ✅ Control rate-limited per gateway. When the cloud answers `failCode 2`, the log is `rate limited` and the plugin pauses
 - ✅ Exponential backoff with jitter on reconnect, to a capped ceiling. A real drop says so once, then `reconnect in Ns`
+- ✅ REST circuit breaker for sustained cloud outages: fail-fast while open; a single half-open probe after cooldown. Transitions log as `Circuit breaker CLOSED -> OPEN` (warn) and `HALF_OPEN` / `CLOSED` (info). Firmware reads do not trip it.
 - ✅ Accessory identity is `{gateway MAC}:{channel}:{kind}`, never the address or the name, so nothing about your network or your naming can orphan a tile
 - ✅ Cached accessories adopted by identity, never replaced, so rooms, scenes and automations survive
 - ✅ An unusable configuration disables the platform and keeps every accessory registered. Nothing is deleted
@@ -35,7 +36,7 @@ A checklist of what is built. The plugin aims to cover everything about a Navien
 - ✅ Read-only mode: every accessory reports state, and no control command is ever sent (`readOnly; write ignored`)
 - ✅ Power-off guard, on by default, because a combi's power state governs central heating as well as hot water (`power-off disabled (allowPowerOff is off)`)
 - ✅ Accessory name prefix (`options.accessoryPrefix`): one editable stem for every HomeKit tile, without changing accessory identity
-- ✅ Opt-in diagnostics (`options.diagnosticsInterval`, default 0 / off): a periodic heartbeat (`Health: healthy | devices n/n | mqtt live | api p50/p95 (req, err)`), with optional structured JSON (`options.structuredLogs`)
+- ✅ Opt-in diagnostics (`options.diagnosticsInterval`, default 0 / off): a periodic heartbeat (`Health: healthy | devices n/n | mqtt live | api p50/p95 (req, err)`), with `breaker OPEN` / `breaker HALF_OPEN` only when the REST circuit is not closed, and optional structured JSON (`options.structuredLogs`)
 - ✅ Secrets redacted from every log line by shape, not by field name, so an unfamiliar response cannot leak a token
 - ✅ HomeKit serial numbers are opaque generated values, never the gateway MAC
 - ✅ Bounded I/O: separate connect and total timeouts, a capped response size, and a capped MQTT packet size

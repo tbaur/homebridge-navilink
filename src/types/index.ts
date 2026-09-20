@@ -360,6 +360,11 @@ export interface DiagnosticsSnapshot {
     commands: number
     pushes: number
   }
+  circuitBreaker: {
+    state: string
+    lastTripAt: number | null
+    trips: number
+  }
   /** Redacted config echo, present only on boot/shutdown snapshots. */
   config?: Record<string, unknown>
 }

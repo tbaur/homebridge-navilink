@@ -4,10 +4,9 @@
  * Licensed under the Apache License, Version 2.0
  * See LICENSE file for full license text
  *
- * The Homebridge verification checker (`homebridge/plugins` `/check`) installs
- * the published package and fails the run if `config.schema.json` is not valid
- * draft-07, or if package.json is missing the fields that page lists. These
- * tests are that contract, so a local `npm test` catches the same mistakes.
+ * Regression coverage for config.schema.json and the package.json fields
+ * Homebridge Config UI X and the plugin listing need. Invalid draft-07
+ * (a boolean `required` on a field) breaks the Settings GUI for every user.
  */
 
 import { readFileSync, readdirSync, statSync } from 'node:fs'
@@ -80,7 +79,7 @@ function loadPackage(): PackageManifest {
   return JSON.parse(raw) as PackageManifest
 }
 
-describe('config.schema.json (Homebridge verification CI)', () => {
+describe('config.schema.json', () => {
   const schema = loadSchema()
 
   it('declares the platform alias the plugin registers under', () => {
@@ -101,7 +100,7 @@ describe('config.schema.json (Homebridge verification CI)', () => {
     }
   })
 
-  it('requires the platform name, which Homebridge 2.x and /check both look for', () => {
+  it('requires the platform name', () => {
     expect(schema.schema.required).toEqual(['name'])
   })
 
@@ -149,14 +148,14 @@ describe('config.schema.json (Homebridge verification CI)', () => {
   })
 })
 
-describe('package.json (Homebridge verification CI)', () => {
+describe('package.json', () => {
   const manifest = loadPackage()
 
   it('has an https homepage', () => {
     expect(manifest.homepage).toEqual(expect.stringMatching(/^https:\/\//))
   })
 
-  it('has an https bugs.url the checker can read a GitHub repo from', () => {
+  it('has an https bugs.url that names the GitHub repo', () => {
     expect(manifest.bugs?.url).toEqual(
       expect.stringMatching(/^https:\/\/(www\.)?github\.com\/[^/]+\/[^/]+/),
     )
@@ -175,7 +174,7 @@ describe('package.json (Homebridge verification CI)', () => {
     }
   })
 
-  it('declares engines the /check accepts for Node 22, Node 24 and Homebridge 2', () => {
+  it('declares engines for Node 22, Node 24 and Homebridge 2', () => {
     const node = manifest.engines?.node ?? ''
     expect(node).toContain('^22')
     expect(node).toContain('^24')
@@ -196,10 +195,7 @@ describe('package.json (Homebridge verification CI)', () => {
     }
   })
 
-  it('does not ship strings the /check flags as environment files or private keys', () => {
-    // The checker greps the installed package for `/\.env/` and
-    // `/private[_-]?key/i`. Those are manual-review only, but a first-run
-    // pass should not hand the reviewer a false positive from our own docs.
+  it('does not ship strings that look like environment files or private keys', () => {
     const root = resolve(__dirname, '../..')
     const packed = listPackedSourceFiles(root, manifest.files ?? [])
     expect(packed.length).toBeGreaterThan(0)

@@ -24,6 +24,7 @@ function readers(overrides: Partial<{
   mqttState: MqttTransportState
   lastMqttEventAgeSec: number | null
   online: number
+  breakerState: string
 }> = {}): DiagnosticsReaders {
   return {
     devices: () => ({ total: 1, online: overrides.online ?? 1 }),
@@ -34,6 +35,7 @@ function readers(overrides: Partial<{
     tokenExpiresInSec: () => 3000,
     tokenLastRefreshAt: () => 1_700_000_000_000,
     pollingCadenceSec: () => 120,
+    circuitBreaker: () => ({ state: overrides.breakerState ?? 'CLOSED' }),
   }
 }
 
@@ -85,6 +87,27 @@ describe('DiagnosticsCollector', () => {
       built.apiRequest(20, false)
     }
     expect(built.rollup(readers()).reasons).toContain('apiErrorRateHigh')
+  })
+
+  it('marks circuitBreakerOpen while the breaker is open or probing', () => {
+    expect(collector().rollup(readers({ breakerState: 'OPEN' })).reasons)
+      .toContain('circuitBreakerOpen')
+    expect(collector().rollup(readers({ breakerState: 'HALF_OPEN' })).reasons)
+      .toContain('circuitBreakerOpen')
+    expect(collector().rollup(readers({ breakerState: 'CLOSED' })).reasons)
+      .not.toContain('circuitBreakerOpen')
+  })
+
+  it('counts breaker trips on the heartbeat then resets the delta', () => {
+    const built = collector()
+    built.breakerTrip()
+    const heartbeat = built.buildHeartbeat(readers({ breakerState: 'OPEN' }))
+    expect(heartbeat.circuitBreaker).toEqual({
+      state: 'OPEN',
+      lastTripAt: 1_700_000_000_000,
+      trips: 1,
+    })
+    expect(built.buildHeartbeat(readers({ breakerState: 'OPEN' })).circuitBreaker.trips).toBe(0)
   })
 
   it('reports heartbeat counters as deltas and snapshots as totals', () => {

@@ -8,6 +8,7 @@
  */
 
 export * from './channel'
+export * from './circuit-breaker'
 export * from './http'
 export * from './identity'
 export * from './mqtt'

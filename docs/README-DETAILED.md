@@ -108,6 +108,8 @@ An appliance with no probe reports `0`. The plugin treats that as absent, not as
 
 **Backoff has jitter.** Reconnects use exponential backoff with full jitter to a capped ceiling, so a regional outage does not produce a synchronised stampede when it ends. A real drop logs the close, then `reconnect in Ns`, then `Publish-subscribe (mqtt) recovered` when the session is up again.
 
+**REST outages fail fast.** After five connection or protocol failures in a minute, the REST circuit breaker opens (`Circuit breaker CLOSED -> OPEN` at warn). Sign-in is not sent again until a cooldown, then a single probe: `HALF_OPEN` and `CLOSED` at info if the cloud answers. A rejected password does not trip it, and a firmware read does not either. MQTT stays on the session reconnect loop.
+
 ## Full configuration reference
 
 ### Platform options
@@ -234,6 +236,17 @@ Publish-subscribe (mqtt) recovered
 
 A continuing outage repeats at most hourly, at debug in between.
 
+A REST cloud outage, as opposed to a broker drop:
+
+```
+Circuit breaker CLOSED -> OPEN
+reconnect in 30s
+Circuit breaker OPEN -> HALF_OPEN
+Circuit breaker HALF_OPEN -> CLOSED
+```
+
+The OPEN line is the warn. While the breaker is open, sign-in is not sent. Diagnostics, if on, add `breaker OPEN` to the heartbeat until the probe succeeds.
+
 A credential refresh is not an outage. The plugin closes the socket itself a few minutes before the AWS credentials expire, signs in again, and the tiles stay current. That is debug only. `family=`, firmware and `Publish-subscribe (mqtt) up` do not repeat at info.
 
 ### Diagnostics (optional)
@@ -246,13 +259,19 @@ It pairs with `options.structuredLogs: true`, which adds a JSON line next to the
 Health: healthy | devices 1/1 | mqtt live | api p50 80ms p95 120ms (req 3, err 0)
 ```
 
+When the REST breaker is not closed, it appears on that line:
+
+```
+Health: degraded [circuitBreakerOpen] | devices 1/1 | breaker OPEN | mqtt connecting | api p50 80ms p95 120ms (req 3, err 5)
+```
+
 | `msg` | Level | When |
 | --- | --- | --- |
 | `diagnostics.start` / `diagnostics.stop` | info | Boot and shutdown, with a redacted config echo |
 | `health` | info | Every `diagnosticsInterval` seconds |
 | `health.degraded` / `health.recovered` | warn / info | When the rollup flips |
 
-Health is `degraded` when the MQTT session has been down for more than a minute, the account was rejected, or recent REST calls are failing at a high rate. Counters on a `health` line are per-interval deltas; the start/stop snapshots are session totals. Credentials, appliance names and the accessory prefix are never in the JSON (the prefix is a boolean: set or not).
+Health is `degraded` when the MQTT session has been down for more than a minute, the account was rejected, the REST circuit breaker is open or probing (`circuitBreakerOpen`), or recent REST calls are failing at a high rate. A non-CLOSED breaker also appears on the human line as `breaker OPEN` or `breaker HALF_OPEN`. Counters on a `health` line are per-interval deltas; the start/stop snapshots are session totals. Credentials, appliance names and the accessory prefix are never in the JSON (the prefix is a boolean: set or not).
 
 ## Apple Shortcuts
 
@@ -288,7 +307,7 @@ The plugin has stopped trying on purpose, so the account is not locked out. Sign
 The account does not exist. Check for a typo, and note that the plugin trims surrounding whitespace but cannot fix a wrong address.
 
 **3. Everything shows No Response and stays that way.**
-Look for `platform disabled` in the log. That means the configuration could not be read; the error above it says which part.
+Look for `platform disabled` in the log. That means the configuration could not be read; the error above it says which part. `Circuit breaker CLOSED -> OPEN` is a cloud outage, not a config error; see 13.
 
 **4. Accessories exist but never get a reading.**
 Check the gateway shows as connected in the NaviLink app. The plugin cannot see anything the app cannot.
@@ -317,7 +336,10 @@ Expected. The appliance clamps to the range your installer set, and a Fahrenheit
 **12. A tile lost its room after an update.**
 Should not happen; identity is stable by design. If `id` was edited by hand, that will do it. Otherwise please open an issue, because it is a bug.
 
-**13. It all stops when the internet does.**
+**13. `Circuit breaker CLOSED -> OPEN`**
+NaviLink REST is being treated as down. Sign-in is paused until the cooldown; tiles stay No Response. When the cloud answers again the log is `HALF_OPEN` then `CLOSED`. A firmware line that never arrives is not this: firmware is optional and does not trip the breaker.
+
+**14. It all stops when the internet does.**
 There is no local interface on a NaviLink gateway. Nothing can be done about this from here.
 
 ## Security

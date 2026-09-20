@@ -29,6 +29,7 @@ function report(overrides: Partial<DiagnosticsSnapshot> = {}): DiagnosticsSnapsh
     token: { expiresInSec: 3000, lastRefreshAt: 1, refreshes: 0 },
     api: { p50Ms: 80, p95Ms: 120, requests: 3, errors: 0 },
     activity: { reconnects: 0, commands: 1, pushes: 2 },
+    circuitBreaker: { state: 'CLOSED', lastTripAt: null, trips: 0 },
     ...overrides,
   }
 }
@@ -81,6 +82,20 @@ describe('formatDiagnosticLine', () => {
     }))
     expect(line).toContain('Health: degraded [mqttDown]')
     expect(line).toContain('mqtt connecting')
+  })
+
+  it('adds a breaker token only when the circuit is not closed', () => {
+    expect(formatDiagnosticLine(report({
+      lifecycle: {
+        health: 'degraded',
+        reasons: ['circuitBreakerOpen'],
+        uptimeSec: 90,
+        pluginVersion: '0.1.1',
+      },
+      circuitBreaker: { state: 'OPEN', lastTripAt: 1, trips: 1 },
+    }))).toBe(
+      'Health: degraded [circuitBreakerOpen] | devices 1/1 | breaker OPEN | mqtt live | api p50 80ms p95 120ms (req 3, err 0)',
+    )
   })
 })
 

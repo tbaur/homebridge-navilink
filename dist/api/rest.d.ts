@@ -25,6 +25,7 @@
  * is logged, and the fields the plugin does not need are never read out of it.
  */
 import type { PluginLogger } from '../types';
+import { type CircuitBreakerStatus } from './circuit-breaker';
 import { type JsonPost } from './http';
 import type { IotCredentials } from './sigv4';
 /** A signed-in session. */
@@ -67,6 +68,8 @@ export interface NaviLinkRestOptions {
         durationMs: number;
         ok: boolean;
     }) => void;
+    /** Fired when the breaker transitions into OPEN, so diagnostics can count a trip. */
+    onCircuitOpen?: () => void;
 }
 /** Talks to the NaviLink REST service. */
 export declare class NaviLinkRest {
@@ -75,7 +78,11 @@ export declare class NaviLinkRest {
     private readonly now;
     private readonly signal;
     private readonly metrics;
+    private readonly onCircuitOpen;
+    private readonly circuitBreaker;
     constructor(options: NaviLinkRestOptions);
+    /** Live breaker status for diagnostics. Never reads the network. */
+    getCircuitBreakerStatus(): CircuitBreakerStatus;
     /**
      * Exchange an email and password for a session.
      *
@@ -112,6 +119,21 @@ export declare class NaviLinkRest {
         additionalValue: string;
     }): Promise<string | undefined>;
     private call;
+    /**
+     * Run one REST logical attempt behind the circuit breaker.
+     *
+     * Pre-flight OPEN rejections do not count as API samples: nothing was sent.
+     * Connection and protocol errors trip the breaker; a rejected password does
+     * not. HALF_OPEN treats every terminal rejection as a failed probe so the
+     * slot cannot wedge.
+     */
+    private guarded;
+    /**
+     * Surface circuit-breaker transitions so operators can see when NaviLink
+     * REST is being treated as unavailable and when it recovers. OPEN is warn;
+     * HALF_OPEN (probe) and CLOSED (recovery) are info.
+     */
+    private logCircuitTransition;
     private readBody;
     /**
      * Turn a failed sign-in into the right kind of error.

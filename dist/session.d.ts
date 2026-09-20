@@ -72,6 +72,8 @@ export interface NaviLinkSessionOptions {
     now?: () => number;
     random?: () => number;
     metrics?: SessionMetrics;
+    /** Fired when REST trips OPEN, so diagnostics can count a trip. */
+    onCircuitOpen?: () => void;
 }
 /** Owns the plugin's entire relationship with the NaviLink cloud. */
 export declare class NaviLinkSession {
@@ -122,6 +124,8 @@ export declare class NaviLinkSession {
     onStale(listener: StaleListener): void;
     /** In-memory gauges for diagnostics. Never reads the network. */
     health(): SessionHealth;
+    /** REST circuit-breaker state for diagnostics. Never reads the network. */
+    circuitBreakerState(): string;
     /**
      * The current state of a device, or undefined when there is none to trust.
      *
@@ -159,6 +163,8 @@ export declare class NaviLinkSession {
      * readable and there is exactly one place that decides whether to try again.
      */
     private runForever;
+    /** Sleep the reconnect delay, abortable on shutdown. */
+    private waitToReconnect;
     /** Sign in, list devices, connect MQTT, subscribe, and ask for state. */
     private establish;
     /** Match the account's gateways against what the user configured. */

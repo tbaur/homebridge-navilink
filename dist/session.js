@@ -93,6 +93,7 @@ class NaviLinkSession {
         this.rest = options.rest ?? new rest_1.NaviLinkRest({
             log: options.log,
             signal: this.abort.signal,
+            ...(options.onCircuitOpen === undefined ? {} : { onCircuitOpen: options.onCircuitOpen }),
             ...(options.metrics === undefined
                 ? {}
                 : { metrics: (sample) => options.metrics?.apiRequest(sample.durationMs, sample.ok) }),
@@ -128,6 +129,10 @@ class NaviLinkSession {
                 .filter((device) => this.observationFor(device.id) !== undefined)
                 .map((device) => device.id),
         };
+    }
+    /** REST circuit-breaker state for diagnostics. Never reads the network. */
+    circuitBreakerState() {
+        return this.rest.getCircuitBreakerStatus().state;
     }
     /**
      * The current state of a device, or undefined when there is none to trust.
@@ -258,8 +263,13 @@ class NaviLinkSession {
                     this.stopPermanently(error);
                     return;
                 }
-                attempt += 1;
                 this.notifyUnreachable(error);
+                if (error instanceof utils_1.CircuitBreakerError) {
+                    // The OPEN line already named the outage. Fail-fast until cooldown.
+                    await this.waitToReconnect(Math.max(error.retryAfterMs, 1_000));
+                    continue;
+                }
+                attempt += 1;
                 this.log.warn(`session failed: ${(0, utils_1.describeError)(error)}`);
             }
             if (!this.running) {
@@ -272,12 +282,19 @@ class NaviLinkSession {
                 maxMs: settings_1.RECONNECT_BACKOFF_MAX_MS,
                 ...(this.options.random === undefined ? {} : { random: this.options.random }),
             });
-            this.log.info(`reconnect in ${Math.round(delay / 1_000)}s`);
-            const backoff = (0, utils_1.interruptibleSleep)(delay);
-            this.backoffSleep = backoff;
-            await backoff.promise;
-            this.backoffSleep = undefined;
+            await this.waitToReconnect(delay);
         }
+    }
+    /** Sleep the reconnect delay, abortable on shutdown. */
+    async waitToReconnect(delayMs) {
+        if (!this.running) {
+            return;
+        }
+        this.log.info(`reconnect in ${Math.round(delayMs / 1_000)}s`);
+        const backoff = (0, utils_1.interruptibleSleep)(delayMs);
+        this.backoffSleep = backoff;
+        await backoff.promise;
+        this.backoffSleep = undefined;
     }
     /** Sign in, list devices, connect MQTT, subscribe, and ask for state. */
     async establish() {

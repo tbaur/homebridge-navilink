@@ -23,6 +23,7 @@ var __exportStar = (this && this.__exportStar) || function(m, exports) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 __exportStar(require("./channel"), exports);
+__exportStar(require("./circuit-breaker"), exports);
 __exportStar(require("./http"), exports);
 __exportStar(require("./identity"), exports);
 __exportStar(require("./mqtt"), exports);

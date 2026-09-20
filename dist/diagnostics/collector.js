@@ -14,8 +14,9 @@
  *   - `rollup()`         — `{ health, reasons[] }`
  *
  * NaviLink variant of the sibling collectors: REST sign-in plus an MQTT
- * session, no circuit breaker. It only reads in-memory state via `readers`;
- * it never touches the network.
+ * session. The REST circuit breaker is included so sustained cloud outages
+ * surface as `circuitBreakerOpen` in the health rollup. It only reads
+ * in-memory state via `readers`; it never touches the network.
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.DiagnosticsCollector = void 0;
@@ -42,6 +43,8 @@ class DiagnosticsCollector {
     mqttReconnects = 0;
     commands = 0;
     pushes = 0;
+    breakerTrips = 0;
+    lastTripAt = null;
     lastPollDurationMs = null;
     latencies = [];
     recentOutcomes = [];
@@ -88,6 +91,11 @@ class DiagnosticsCollector {
     push() {
         this.pushes += 1;
     }
+    /** Record a circuit-breaker trip (transition into the open state). */
+    breakerTrip() {
+        this.breakerTrips += 1;
+        this.lastTripAt = this.now();
+    }
     /** Nearest-rank percentile (0..100) over the recent-latency window. */
     percentile(p) {
         if (this.latencies.length === 0) {
@@ -101,8 +109,9 @@ class DiagnosticsCollector {
     }
     /**
      * Classify current health. Degraded when the MQTT session has been down
-     * longer than the grace window, credentials were rejected, or recent REST
-     * calls are failing at a high rate.
+     * longer than the grace window, credentials were rejected, the REST
+     * circuit breaker is open or probing, or recent REST calls are failing
+     * at a high rate.
      */
     rollup(readers) {
         const reasons = [];
@@ -119,6 +128,10 @@ class DiagnosticsCollector {
             if (beenDownLongEnough) {
                 reasons.push('mqttDown');
             }
+        }
+        const breakerState = readers.circuitBreaker().state;
+        if (breakerState === 'OPEN' || breakerState === 'HALF_OPEN') {
+            reasons.push('circuitBreakerOpen');
         }
         const total = this.recentOutcomes.length;
         if (total >= API_ERROR_MIN_SAMPLES) {
@@ -143,6 +156,7 @@ class DiagnosticsCollector {
             reconnects: current.mqttReconnects - this.marker.mqttReconnects,
             commands: current.commands - this.marker.commands,
             pushes: current.pushes - this.marker.pushes,
+            trips: current.breakerTrips - this.marker.breakerTrips,
         }, readers);
         this.marker = current;
         return report;
@@ -157,6 +171,7 @@ class DiagnosticsCollector {
             reconnects: this.mqttReconnects,
             commands: this.commands,
             pushes: this.pushes,
+            trips: this.breakerTrips,
         }, readers);
         report.config = { ...this.configEcho };
         return report;
@@ -174,6 +189,7 @@ class DiagnosticsCollector {
             mqttReconnects: this.mqttReconnects,
             commands: this.commands,
             pushes: this.pushes,
+            breakerTrips: this.breakerTrips,
         };
     }
     buildReport(msg, counters, readers) {
@@ -209,6 +225,11 @@ class DiagnosticsCollector {
                 reconnects: counters.reconnects,
                 commands: counters.commands,
                 pushes: counters.pushes,
+            },
+            circuitBreaker: {
+                state: readers.circuitBreaker().state,
+                lastTripAt: this.lastTripAt,
+                trips: counters.trips,
             },
         };
     }

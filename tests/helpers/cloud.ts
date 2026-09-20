@@ -20,6 +20,7 @@ import type { MqttConnection, MqttConnectionOptions, MqttMessage } from '../../s
 import { ConnectionError } from '../../src/utils/errors'
 import { FAKE_ASIA_KEY } from './secrets'
 import type { ListedDevice, NaviLinkRest, NaviLinkSessionTokens } from '../../src/api/rest'
+import { CircuitState, type CircuitBreakerStatus } from '../../src/api/circuit-breaker'
 import { buildTopics, responseTopic, type TopicIdentity } from '../../src/api/topics'
 import channelInfoFrame from '../fixtures/ncb-240e.channelinfo.json'
 import channelStatusFrame from '../fixtures/ncb-240e.channelstatus.json'
@@ -238,6 +239,15 @@ export function fakeRest(overrides: {
       calls.readFirmware += 1
       return Promise.resolve('firmware' in overrides ? overrides.firmware : '4352')
     },
+    getCircuitBreakerStatus: (): CircuitBreakerStatus => ({
+      state: CircuitState.CLOSED,
+      failures: 0,
+      successes: 0,
+      lastFailureTime: null,
+      halfOpenRequests: 0,
+      isOpen: false,
+      remainingResetTime: null,
+    }),
   }
 
   return {

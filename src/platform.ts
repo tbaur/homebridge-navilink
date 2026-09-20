@@ -216,6 +216,7 @@ export class NaviLinkPlatform implements DynamicPlatformPlugin, AccessoryHost {
       devices,
       statusIntervalSec: this.options.statusIntervalSec,
       metrics: this.diagnostics,
+      onCircuitOpen: () => this.diagnostics.breakerTrip(),
     })
     session.onObservation((deviceId, observation, reason) => {
       this.distribute(deviceId, observation, reason)
@@ -632,6 +633,9 @@ export class NaviLinkPlatform implements DynamicPlatformPlugin, AccessoryHost {
       },
       tokenLastRefreshAt: () => health?.lastRefreshAt ?? null,
       pollingCadenceSec: () => this.options.statusIntervalSec,
+      circuitBreaker: () => ({
+        state: this.session?.circuitBreakerState() ?? 'CLOSED',
+      }),
     }
   }
 
