@@ -28,6 +28,11 @@
   .nl-toolbar { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; margin-bottom: 1rem; }
   .nl-toolbar .spacer { flex: 1 1 auto; }
   .nl-guard { border-left: 3px solid rgba(255, 193, 7, .8); padding-left: .7rem; margin-top: .6rem; }
+  .nl-slider { display: block; }
+  .nl-slider-head { display: flex; justify-content: space-between; align-items: baseline; gap: .75rem; }
+  .nl-slider-head label { font-size: .8rem; margin: 0; }
+  .nl-slider-head span { font-size: .8rem; font-variant-numeric: tabular-nums; flex: 0 0 auto; }
+  .nl-slider input[type="range"] { display: block; width: 100%; margin: .35rem 0 0; }
 </style>
 
 <div class="nl-intro">
@@ -123,13 +128,12 @@
     </div>
   </div>
 
-  <div class="form-group mt-3 mb-2">
-    <label for="diagnostics-interval" style="font-size: .8rem;">
-      Diagnostics interval (seconds)
-      <span id="diagnostics-interval-value" class="float-right">0</span>
-    </label>
-    <input type="range" class="custom-range" id="diagnostics-interval"
-           min="0" max="3600" step="1" value="0" />
+  <div class="form-group nl-slider mt-3 mb-2">
+    <div class="nl-slider-head">
+      <label for="diagnostics-interval">Diagnostics interval (seconds)</label>
+      <span id="diagnostics-interval-value">0</span>
+    </div>
+    <input type="range" id="diagnostics-interval" min="0" max="3600" step="1" value="0" />
     <div class="nl-meta">
       A health line in the Homebridge log. 0 is off. Nothing is exposed in HomeKit.
     </div>
