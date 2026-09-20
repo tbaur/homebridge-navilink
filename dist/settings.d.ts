@@ -106,6 +106,25 @@ export declare const MIN_STATUS_INTERVAL_SEC = 30;
 /** Longest configurable status interval. */
 export declare const MAX_STATUS_INTERVAL_SEC = 3600;
 /**
+ * Default diagnostics heartbeat interval.
+ *
+ * Off. A health line every two minutes would bury the lines that say what
+ * actually happened. Turn it on when you are diagnosing a problem.
+ */
+export declare const DEFAULT_DIAGNOSTICS_INTERVAL_SEC = 0;
+/** Shortest configurable diagnostics interval when diagnostics are on. */
+export declare const MIN_DIAGNOSTICS_INTERVAL_SEC = 30;
+/** Longest configurable diagnostics interval. */
+export declare const MAX_DIAGNOSTICS_INTERVAL_SEC = 3600;
+/**
+ * How long MQTT may be down before diagnostics call health degraded.
+ *
+ * Startup and a brief reconnect both take seconds. A minute is long enough
+ * that a flap is not a health event, and short enough that a real outage
+ * shows on the next heartbeat.
+ */
+export declare const MQTT_DOWN_GRACE_SEC = 60;
+/**
  * Refresh the session this long before its credentials expire.
  *
  * The sign-in response says how long the AWS credentials last. Reconnecting on

@@ -53,6 +53,27 @@
             "type": "boolean",
             "default": false,
             "description": "Off by default, and worth leaving off. On a combi appliance the power state governs central heating as well as hot water, so \"turn off the water heater\" said to Siri, or a scene that turns everything off, would stop the heating in a house that may be empty and freezing. With this off, a power-off request is declined and explained instead of obeyed."
+          },
+          "diagnosticsInterval": {
+            "title": "Diagnostics Interval (seconds)",
+            "type": "integer",
+            "default": 0,
+            "minimum": 0,
+            "maximum": 3600,
+            "description": "Emit a plugin health line to the Homebridge log every N seconds. 0 is off (the default). Allowed range 0–3600; values between 1 and 29 are clamped up to 30. Logs only; nothing is exposed in HomeKit."
+          },
+          "structuredLogs": {
+            "title": "Structured (JSON) Logs",
+            "type": "boolean",
+            "default": false,
+            "description": "When diagnostics are on (diagnosticsInterval > 0), also emit each report as a JSON line next to the human summary. Has no effect while diagnostics are off."
+          },
+          "accessoryPrefix": {
+            "title": "Accessory Name Prefix",
+            "type": "string",
+            "maxLength": 64,
+            "examples": ["Zone One"],
+            "description": "HomeKit tiles become this plus the accessory: \"Zone One Hot Water\", \"Zone One Heating\", and so on. Leave blank to use each appliance's own name. Changing it renames the tiles; it does not detach rooms or automations."
           }
         }
       },
@@ -78,7 +99,7 @@
               "type": "string",
               "maxLength": 64,
               "examples": ["Zone One"],
-              "description": "The appliance's name. Accessories are named from it: \"Boiler\" gives \"Boiler Hot Water\", \"Boiler Heating\", \"Boiler Fault\" and so on."
+              "description": "The appliance's name. Accessories are named from it unless options.accessoryPrefix is set: \"Boiler\" gives \"Boiler Hot Water\", \"Boiler Heating\", \"Boiler Fault\" and so on."
             },
             "channel": {
               "title": "Channel",

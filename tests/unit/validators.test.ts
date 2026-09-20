@@ -27,6 +27,7 @@ import {
   isValidDeviceId,
   isValidEmail,
   resolveAccessories,
+  resolveAccessoryPrefix,
   resolveStatusIntervalSec,
   validateConfig,
 } from '../../src/utils/validators'
@@ -218,7 +219,7 @@ describe('validateConfig and the password', () => {
     const result = validateConfig(config({ password: '  hunter-two  ' }))
 
     expect(result.warnings).toEqual([
-      'the NaviLink password had surrounding whitespace, which has been trimmed',
+      'password had surrounding whitespace; trimmed',
     ])
     expect(result.warnings.join(' ')).not.toMatch(/\d/)
     expect(result.account?.password).toBe('hunter-two')
@@ -235,7 +236,7 @@ describe('validateConfig and the password', () => {
   it('treats a password that is nothing but whitespace as missing', () => {
     const result = validateConfig(config({ password: '   ' }))
 
-    expect(result.errors).toEqual(['the configured NaviLink password is blank'])
+    expect(result.errors).toEqual(['password is blank'])
     expect(result.account).toBeUndefined()
   })
 
@@ -243,7 +244,7 @@ describe('validateConfig and the password', () => {
     for (const missing of [{ email: undefined }, { password: undefined }, { password: '' }]) {
       const result = validateConfig(config(missing))
 
-      expect(result.errors[0]).toContain('email address and password are required')
+      expect(result.errors[0]).toContain('email and password required')
       expect(result.account).toBeUndefined()
     }
   })
@@ -251,7 +252,7 @@ describe('validateConfig and the password', () => {
   it('names a bad address instead of leaving it to look like a wrong password', () => {
     const result = validateConfig(config({ email: 'someone-at-example.com' }))
 
-    expect(result.errors).toEqual(['the configured NaviLink email address is not a valid address'])
+    expect(result.errors).toEqual(['invalid email'])
     // The rest of the file is still validated, so one round of fixing clears
     // every problem rather than uncovering the next one.
     expect(result.devices).toHaveLength(1)
@@ -279,9 +280,9 @@ describe('validateConfig', () => {
   })
 
   it('treats a missing or mistyped devices list as something it cannot act on', () => {
-    expect(validateConfig(config({ devices: undefined })).errors[0]).toContain('no "devices" list')
+    expect(validateConfig(config({ devices: undefined })).errors[0]).toContain('no devices list')
     expect(validateConfig(config({ devices: 'a1b2c3d4e5f6:1' })).errors[0])
-      .toBe('configuration "devices" must be a list')
+      .toBe('devices must be a list')
   })
 
   it('skips one malformed entry rather than failing the whole installation', () => {
@@ -300,7 +301,7 @@ describe('validateConfig', () => {
     const result = validateConfig(config({ devices: [42, { name: 'Boiler' }] }))
 
     expect(result.devices).toEqual([])
-    expect(result.errors).toEqual(['all 2 configured device(s) were rejected; see the warnings above'])
+    expect(result.errors).toEqual(['all 2 device(s) rejected'])
   })
 
   it('says which appliance went missing, by name and by reason', () => {
@@ -435,33 +436,84 @@ describe('validateConfig', () => {
       statusIntervalSec: DEFAULT_STATUS_INTERVAL_SEC,
       allowPowerOff: false,
       readOnly: false,
+      diagnosticsInterval: 0,
+      structuredLogs: false,
+      accessoryPrefix: '',
     })
   })
 
   it('reads the options a user set', () => {
     const result = validateConfig(config({
-      options: { statusIntervalSec: 300, allowPowerOff: true, readOnly: true },
+      options: {
+        statusIntervalSec: 300,
+        allowPowerOff: true,
+        readOnly: true,
+        diagnosticsInterval: 300,
+        structuredLogs: true,
+        accessoryPrefix: 'Zone One',
+      },
     }))
 
     expect(result.options).toEqual({
       statusIntervalSec: 300,
       allowPowerOff: true,
       readOnly: true,
+      diagnosticsInterval: 300,
+      structuredLogs: true,
+      accessoryPrefix: 'Zone One',
     })
+  })
+
+  it('clamps a short diagnostics interval up to 30s and treats 0 as off', () => {
+    expect(validateConfig(config({ options: { diagnosticsInterval: 0 } }))
+      .options.diagnosticsInterval).toBe(0)
+    const short = validateConfig(config({ options: { diagnosticsInterval: 5 } }))
+    expect(short.options.diagnosticsInterval).toBe(30)
+    expect(short.warnings.join(' ')).toContain('clamped to 30s')
   })
 
   it('spells out what read-only will feel like from the Home app', () => {
     const result = validateConfig(config({ options: { readOnly: true } }))
 
     expect(result.errors).toEqual([])
-    expect(result.warnings.join(' ')).toContain('options.readOnly is on')
+    expect(result.warnings.join(' ')).toContain('readOnly: writes disabled')
   })
 
   it('treats an empty devices list as fatal, so cached tiles are not unregistered', () => {
     const result = validateConfig(config({ devices: [] }))
 
-    expect(result.errors).toEqual(['no devices are configured; open the plugin settings and sign in'])
+    expect(result.errors).toEqual(['no devices configured'])
     expect(result.devices).toEqual([])
+  })
+})
+
+describe('resolveAccessoryPrefix', () => {
+  it('leaves a blank prefix blank, without complaining', () => {
+    const warnings: string[] = []
+
+    expect(resolveAccessoryPrefix(undefined, warnings)).toBe('')
+    expect(resolveAccessoryPrefix('', warnings)).toBe('')
+    expect(resolveAccessoryPrefix('   ', warnings)).toBe('')
+    expect(warnings).toEqual([])
+  })
+
+  it('trims and strips control characters', () => {
+    expect(resolveAccessoryPrefix('  Zone One\u0000  ')).toBe('Zone One')
+  })
+
+  it('clamps a prefix that would overflow a HomeKit name', () => {
+    const warnings: string[] = []
+    const prefix = resolveAccessoryPrefix('Z'.repeat(MAX_NAME_LENGTH + 8), warnings)
+
+    expect(prefix).toHaveLength(MAX_NAME_LENGTH)
+    expect(warnings.join(' ')).toContain(`clamped to ${MAX_NAME_LENGTH} characters`)
+  })
+
+  it('ignores a non-string value so a hand-edit cannot break naming', () => {
+    const warnings: string[] = []
+
+    expect(resolveAccessoryPrefix(12, warnings)).toBe('')
+    expect(warnings.join(' ')).toContain('is not a string')
   })
 })
 
@@ -506,7 +558,7 @@ describe('resolveAccessories', () => {
 
     resolveAccessories([resolved(), resolved({ id: SECOND_DEVICE_ID })], warnings)
 
-    expect(warnings).toEqual(['2 accessories are named Boiler Hot Water; Siri cannot tell them apart'])
+    expect(warnings).toEqual(['duplicate name: Boiler Hot Water (2)'])
   })
 
   it('says nothing when every name is distinct', () => {
@@ -552,5 +604,24 @@ describe('resolveAccessories', () => {
   it('produces nothing for a device with every accessory turned off', () => {
     expect(resolveAccessories([resolved({ dhw: false })])).toEqual([])
     expect(resolveAccessories([])).toEqual([])
+  })
+
+  it('uses the prefix as the stem when there is one appliance', () => {
+    expect(resolveAccessories([resolved()], undefined, 'Zone One')).toEqual([
+      { kind: 'dhw', deviceId: DEVICE_ID, name: 'Zone One Hot Water' },
+    ])
+  })
+
+  it('keeps the appliance name after the prefix when two appliances would otherwise collide', () => {
+    const accessories = resolveAccessories(
+      [resolved(), resolved({ id: SECOND_DEVICE_ID, name: 'Garage' })],
+      undefined,
+      'Zone One',
+    )
+
+    expect(accessories.map((accessory) => accessory.name)).toEqual([
+      'Zone One Boiler Hot Water',
+      'Zone One Garage Hot Water',
+    ])
   })
 })

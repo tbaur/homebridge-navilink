@@ -192,7 +192,7 @@ class ThermostatAccessory extends base_accessory_1.BaseAccessory {
     async writeTargetState(value) {
         const { TargetHeatingCoolingState } = this.host.hap.Characteristic;
         const wantOn = value === TargetHeatingCoolingState.HEAT;
-        if (this.declineIfReadOnly('change the mode')) {
+        if (this.declineIfReadOnly()) {
             this.restoreTargetState();
             return;
         }
@@ -221,7 +221,7 @@ class ThermostatAccessory extends base_accessory_1.BaseAccessory {
         if (typeof value !== 'number') {
             return;
         }
-        if (this.declineIfReadOnly('change the setpoint')) {
+        if (this.declineIfReadOnly()) {
             this.revertTargetTemperature();
             return;
         }
@@ -255,8 +255,7 @@ class ThermostatAccessory extends base_accessory_1.BaseAccessory {
         const observation = this.host.observationFor(this.deviceId);
         const limits = observation === undefined ? undefined : this.readLimits(observation);
         if (observation === undefined || limits === undefined) {
-            this.host.log.warn(`${(0, utils_1.forLog)(this.displayName)}: cannot set a temperature before the appliance has `
-                + 'reported its limits');
+            this.host.log.warn(`${(0, utils_1.forLog)(this.displayName)}: no limits yet; setpoint ignored`);
             this.optimisticTargetCelsius = undefined;
             return;
         }
@@ -277,7 +276,7 @@ class ThermostatAccessory extends base_accessory_1.BaseAccessory {
         }
         catch (error) {
             this.optimisticTargetCelsius = undefined;
-            this.host.log.warn(`${(0, utils_1.forLog)(this.displayName)}: could not set the temperature: ${(0, utils_1.describeError)(error)}`);
+            this.host.log.warn(`${(0, utils_1.forLog)(this.displayName)}: setpoint failed: ${(0, utils_1.describeError)(error)}`);
             this.revertTargetTemperature();
         }
         finally {

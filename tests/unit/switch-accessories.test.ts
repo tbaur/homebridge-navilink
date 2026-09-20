@@ -100,7 +100,7 @@ describe('the power switch', () => {
     built.failNextControl(new Error('the appliance is not connected'))
     await built.service('Switch').getCharacteristic(characteristics.On).write(false)
     await settle()
-    expect(built.log.calls.some((line) => line.includes('warn Boiler Power: could not change power')))
+    expect(built.log.calls.some((line) => line.includes('warn Boiler Power: power failed')))
       .toBe(true)
   })
 
@@ -116,10 +116,7 @@ describe('the power switch', () => {
     await built.service('Switch').getCharacteristic(characteristics.On).write(true)
     await settle()
     expect(built.control.power).toEqual([])
-    expect(built.log.calls.some((line) => (
-      line.includes('ignoring a request to change the power')
-      && line.includes('options.readOnly is on in the plugin settings')
-    ))).toBe(true)
+    expect(built.log.calls.some((line) => line.includes('readOnly; write ignored'))).toBe(true)
   })
 
   it('publishes a changed state and stays quiet about an unchanged one', () => {
@@ -240,7 +237,7 @@ describe('the fault sensor', () => {
       observation({ readings: { errorCode: 12, subErrorCode: 3 } }),
       'push',
     )
-    expect(built.log.calls.some((line) => line.includes('reports error 12.3'))).toBe(true)
+    expect(built.log.calls.some((line) => line.includes('error 12.3'))).toBe(true)
   })
 
   it('omits a sub-code of zero rather than printing a bare full stop', () => {
@@ -249,7 +246,7 @@ describe('the fault sensor', () => {
       observation({ readings: { errorCode: 12, subErrorCode: 0 } }),
       'push',
     )
-    expect(built.log.calls.some((line) => line.includes('reports error 12;'))).toBe(true)
+    expect(built.log.calls.some((line) => line.includes('error 12'))).toBe(true)
   })
 
   it('reports a standing fault once rather than on every frame', () => {
@@ -258,7 +255,7 @@ describe('the fault sensor', () => {
     accessory.applyObservation(faulted, 'startup')
     accessory.applyObservation(faulted, 'poll')
     accessory.applyObservation(faulted, 'poll')
-    expect(built.log.calls.filter((line) => line.includes('reports error'))).toHaveLength(1)
+    expect(built.log.calls.filter((line) => line.includes(': error '))).toHaveLength(1)
   })
 
   it('says when the fault clears, so the log is not left showing a dead boiler', () => {
@@ -268,13 +265,13 @@ describe('the fault sensor', () => {
       'push',
     )
     accessory.applyObservation(observation(), 'push')
-    expect(built.log.calls).toContain('info Boiler Fault: the fault has cleared')
+    expect(built.log.calls).toContain('info Boiler Fault: fault cleared')
   })
 
   it('does not say the fault has cleared on the first healthy frame', () => {
     const { built, accessory } = build()
     accessory.applyObservation(observation({ readings: { errorCode: 0, subErrorCode: 0 } }), 'startup')
-    expect(built.log.calls.some((line) => line.includes('the fault has cleared'))).toBe(false)
+    expect(built.log.calls.some((line) => line.includes('fault cleared'))).toBe(false)
   })
 })
 
@@ -316,7 +313,7 @@ describe('a temperature probe', () => {
     const { built, accessory } = build('outdoor')
     accessory.applyObservation(observation(), 'startup')
     accessory.applyObservation(observation(), 'poll')
-    const warned = built.log.calls.filter((line) => line.includes('no outdoor sensor is fitted'))
+    const warned = built.log.calls.filter((line) => line.includes('no outdoor sensor'))
     expect(warned).toHaveLength(1)
   })
 

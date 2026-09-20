@@ -62,9 +62,7 @@ class SpaceHeatingAccessory extends thermostat_accessory_1.ThermostatAccessory {
             return;
         }
         this.hasWarnedNoLoop = true;
-        this.host.log.warn(`${(0, utils_1.forLog)(this.displayName)}: this appliance reports no space-heating loop `
-            + '(heatControl is off, or the installer setpoint range is empty). Turn the heating '
-            + 'accessory off in the plugin settings.');
+        this.host.log.warn(`${(0, utils_1.forLog)(this.displayName)}: no heating loop`);
     }
     /** The flow probe: the water going out to the loop. */
     readTemperature(observation) {
@@ -99,8 +97,7 @@ class SpaceHeatingAccessory extends thermostat_accessory_1.ThermostatAccessory {
             return true;
         }
         catch (error) {
-            this.host.log.warn(`${(0, utils_1.forLog)(this.displayName)}: could not ${on ? 'enable' : 'disable'} heating: `
-                + (0, utils_1.describeError)(error));
+            this.host.log.warn(`${(0, utils_1.forLog)(this.displayName)}: heating ${on ? 'on' : 'off'} failed: ${(0, utils_1.describeError)(error)}`);
             return false;
         }
     }
@@ -118,7 +115,7 @@ class SpaceHeatingAccessory extends thermostat_accessory_1.ThermostatAccessory {
     requireHeatingLoop() {
         if (!this.hasHeatingLoop()) {
             this.warnNoLoop();
-            throw new utils_1.ControlRejectedError('this appliance reports no space-heating loop, so a heating command was not sent');
+            throw new utils_1.ControlRejectedError('no heating loop');
         }
     }
     optimisticSetpointPatch(native) {

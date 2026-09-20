@@ -76,14 +76,13 @@ export class FaultAccessory extends BaseAccessory {
     if (errorCode === 0) {
       // First healthy frame is the resting state, not a transition.
       if (previous !== undefined) {
-        this.host.log.info(`${forLog(this.displayName)}: the fault has cleared`)
+        this.host.log.info(`${forLog(this.displayName)}: fault cleared`)
       }
       return
     }
     this.host.log.warn(
-      `${forLog(this.displayName)}: the appliance reports error ${errorCode}`
-      + `${subErrorCode === 0 ? '' : `.${subErrorCode}`}; `
-      + 'look the code up in the installation manual',
+      `${forLog(this.displayName)}: error ${errorCode}`
+      + `${subErrorCode === 0 ? '' : `.${subErrorCode}`}`,
     )
   }
 }

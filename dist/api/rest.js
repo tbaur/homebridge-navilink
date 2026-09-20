@@ -54,11 +54,13 @@ class NaviLinkRest {
     post;
     now;
     signal;
+    metrics;
     constructor(options) {
         this.log = options.log;
         this.post = options.post ?? http_1.postJson;
         this.now = options.now ?? Date.now;
         this.signal = options.signal;
+        this.metrics = options.metrics;
     }
     /**
      * Exchange an email and password for a session.
@@ -128,8 +130,7 @@ class NaviLinkRest {
                 return found;
             }
         }
-        this.log.warn(`the account listed ${MAX_DEVICE_LIST_PAGES * DEVICE_LIST_PAGE_SIZE} gateways, `
-            + 'which is this plugin\'s cap; any further gateway is not shown');
+        this.log.warn(`device list capped at ${MAX_DEVICE_LIST_PAGES * DEVICE_LIST_PAGE_SIZE}`);
         return found;
     }
     /** One page of the device list, already parsed. */
@@ -178,7 +179,7 @@ class NaviLinkRest {
             // Not fatal, and deliberately quiet: firmware is a nicety, and this
             // endpoint has been observed answering 403 on accounts where the device
             // list works perfectly well.
-            this.log.debug(`device/info answered HTTP ${response.status}; firmware will be unknown`);
+            this.log.debug(`device/info HTTP ${response.status}; firmware unknown`);
             return undefined;
         }
         const body = this.readBody(response.body, 'device info');
@@ -189,15 +190,24 @@ class NaviLinkRest {
         // The path, never the body: the body of the very first call is the
         // password.
         this.log.debug(`POST ${path}`);
-        return this.post(`${settings_1.API_BASE}${path}`, body, {
-            connectTimeoutMs: settings_1.CONNECT_TIMEOUT_MS,
-            totalTimeoutMs: settings_1.REST_TIMEOUT_MS,
-            maxBytes: settings_1.MAX_REST_BYTES,
-            // No `Bearer` prefix. The API wants the raw token, and sending a
-            // correctly-formed bearer header gets a 401.
-            ...(accessToken === undefined ? {} : { headers: { authorization: accessToken } }),
-            ...(this.signal === undefined ? {} : { signal: this.signal }),
-        });
+        const started = this.now();
+        try {
+            const response = await this.post(`${settings_1.API_BASE}${path}`, body, {
+                connectTimeoutMs: settings_1.CONNECT_TIMEOUT_MS,
+                totalTimeoutMs: settings_1.REST_TIMEOUT_MS,
+                maxBytes: settings_1.MAX_REST_BYTES,
+                // No `Bearer` prefix. The API wants the raw token, and sending a
+                // correctly-formed bearer header gets a 401.
+                ...(accessToken === undefined ? {} : { headers: { authorization: accessToken } }),
+                ...(this.signal === undefined ? {} : { signal: this.signal }),
+            });
+            this.metrics?.({ durationMs: this.now() - started, ok: true });
+            return response;
+        }
+        catch (error) {
+            this.metrics?.({ durationMs: this.now() - started, ok: false });
+            throw error;
+        }
     }
     readBody(text, what) {
         const parsed = (0, http_1.parseJsonBody)(text);
@@ -249,8 +259,7 @@ class NaviLinkRest {
             .filter((value) => value !== undefined)
             .filter((value) => value >= MIN_BELIEVABLE_SESSION_MS && value <= MAX_BELIEVABLE_SESSION_MS);
         if (candidates.length === 0) {
-            this.log.debug('the cloud did not report a believable session lifetime; '
-                + `assuming ${Math.round(FALLBACK_SESSION_MS / 60_000)} minutes`);
+            this.log.debug(`session lifetime missing; assuming ${Math.round(FALLBACK_SESSION_MS / 60_000)}m`);
             return FALLBACK_SESSION_MS;
         }
         return Math.min(...candidates);
@@ -266,7 +275,7 @@ class NaviLinkRest {
         const record = asRecord(asRecord(entry)?.deviceInfo) ?? asRecord(entry);
         const macAddress = asNonEmptyString(record?.macAddress)?.toLowerCase();
         if (record === undefined || macAddress === undefined) {
-            this.log.debug('skipping a device-list entry with no MAC address');
+            this.log.debug('skipping device-list entry: no MAC');
             return undefined;
         }
         return {

@@ -63,7 +63,7 @@ class BaseAccessory {
         catch (error) {
             // A subclass fault must not stop the other accessories being updated
             // from the same frame.
-            this.host.log.debug(`${(0, utils_1.forLog)(this.displayName)}: could not apply an observation: ${(0, utils_1.describeError)(error)}`);
+            this.host.log.debug(`${(0, utils_1.forLog)(this.displayName)}: apply failed: ${(0, utils_1.describeError)(error)}`);
         }
     }
     /** Report that the appliance can no longer be heard from. */
@@ -115,8 +115,7 @@ class BaseAccessory {
         });
         const outcome = await (0, utils_1.raceTimeout)(started, settings_1.HOMEKIT_WRITE_BUDGET_MS);
         if (outcome === utils_1.TIMED_OUT) {
-            this.host.log.debug(`${(0, utils_1.forLog)(this.displayName)}: ${label} is taking longer than `
-                + `${settings_1.HOMEKIT_WRITE_BUDGET_MS}ms; answering HomeKit and finishing in the background`);
+            this.host.log.debug(`${(0, utils_1.forLog)(this.displayName)}: ${label} still in flight after ${settings_1.HOMEKIT_WRITE_BUDGET_MS}ms`);
             void settled;
         }
     }
@@ -155,16 +154,15 @@ class BaseAccessory {
      * True when the write must not happen, having said so at most once.
      *
      * Shared so a thermostat, a power switch and recirculation all use the same
-     * sentence when `options.readOnly` is on.
+     * line when `options.readOnly` is on.
      */
-    declineIfReadOnly(what) {
+    declineIfReadOnly() {
         if (!this.host.isReadOnly) {
             return false;
         }
         if (!this.hasExplainedReadOnly) {
             this.hasExplainedReadOnly = true;
-            this.host.log.info(`${(0, utils_1.forLog)(this.displayName)}: ignoring a request to ${what}; `
-                + 'options.readOnly is on in the plugin settings');
+            this.host.log.info(`${(0, utils_1.forLog)(this.displayName)}: readOnly; write ignored`);
         }
         return true;
     }

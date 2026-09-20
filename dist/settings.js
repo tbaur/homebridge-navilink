@@ -15,7 +15,7 @@
  * `api/protocol.ts` instead, next to the code that builds the frames.
  */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.MAX_PASSWORD_LENGTH = exports.MAX_NAME_LENGTH = exports.MAX_LOG_FIELD_LENGTH = exports.MAX_UNITS = exports.MAX_CHANNEL = exports.MIN_CHANNEL = exports.STALE_OBSERVATION_INTERVALS = exports.SETPOINT_COALESCE_MS = exports.HOMEKIT_WRITE_BUDGET_MS = exports.CONTROL_LOCKOUT_MS = exports.CONTROL_INTERVAL_FAIL_CODE = exports.CONTROL_RATE_LIMIT_MS = exports.DISCOVERY_BUDGET_MS = exports.UNREACHABLE_REWARN_MS = exports.MIN_REFRESH_DELAY_MS = exports.CREDENTIAL_REFRESH_MARGIN_MS = exports.MAX_STATUS_INTERVAL_SEC = exports.MIN_STATUS_INTERVAL_SEC = exports.DEFAULT_STATUS_INTERVAL_SEC = exports.RECONNECT_BACKOFF_MAX_MS = exports.RECONNECT_BACKOFF_BASE_MS = exports.MQTT_PING_TIMEOUT_MS = exports.MQTT_KEEPALIVE_SEC = exports.STATUS_RESPONSE_TIMEOUT_MS = exports.MQTT_SUBSCRIBE_TIMEOUT_MS = exports.MQTT_CONNECT_TIMEOUT_MS = exports.MAX_REST_BYTES = exports.REST_TIMEOUT_MS = exports.CONNECT_TIMEOUT_MS = exports.IOT_REGION = exports.IOT_ENDPOINT = exports.API_BASE = exports.DEFAULT_MODEL = exports.MANUFACTURER = exports.UNKNOWN_PLUGIN_VERSION = exports.UUID_PREFIX = exports.PLATFORM_NAME = exports.PLUGIN_NAME = void 0;
+exports.MAX_PASSWORD_LENGTH = exports.MAX_NAME_LENGTH = exports.MAX_LOG_FIELD_LENGTH = exports.MAX_UNITS = exports.MAX_CHANNEL = exports.MIN_CHANNEL = exports.STALE_OBSERVATION_INTERVALS = exports.SETPOINT_COALESCE_MS = exports.HOMEKIT_WRITE_BUDGET_MS = exports.CONTROL_LOCKOUT_MS = exports.CONTROL_INTERVAL_FAIL_CODE = exports.CONTROL_RATE_LIMIT_MS = exports.DISCOVERY_BUDGET_MS = exports.UNREACHABLE_REWARN_MS = exports.MIN_REFRESH_DELAY_MS = exports.CREDENTIAL_REFRESH_MARGIN_MS = exports.MQTT_DOWN_GRACE_SEC = exports.MAX_DIAGNOSTICS_INTERVAL_SEC = exports.MIN_DIAGNOSTICS_INTERVAL_SEC = exports.DEFAULT_DIAGNOSTICS_INTERVAL_SEC = exports.MAX_STATUS_INTERVAL_SEC = exports.MIN_STATUS_INTERVAL_SEC = exports.DEFAULT_STATUS_INTERVAL_SEC = exports.RECONNECT_BACKOFF_MAX_MS = exports.RECONNECT_BACKOFF_BASE_MS = exports.MQTT_PING_TIMEOUT_MS = exports.MQTT_KEEPALIVE_SEC = exports.STATUS_RESPONSE_TIMEOUT_MS = exports.MQTT_SUBSCRIBE_TIMEOUT_MS = exports.MQTT_CONNECT_TIMEOUT_MS = exports.MAX_REST_BYTES = exports.REST_TIMEOUT_MS = exports.CONNECT_TIMEOUT_MS = exports.IOT_REGION = exports.IOT_ENDPOINT = exports.API_BASE = exports.DEFAULT_MODEL = exports.MANUFACTURER = exports.UNKNOWN_PLUGIN_VERSION = exports.UUID_PREFIX = exports.PLATFORM_NAME = exports.PLUGIN_NAME = void 0;
 exports.readPluginVersion = readPluginVersion;
 /** npm package name. Must match `package.json` `name` for Homebridge to load us. */
 exports.PLUGIN_NAME = 'homebridge-navilink';
@@ -110,6 +110,25 @@ exports.DEFAULT_STATUS_INTERVAL_SEC = 120;
 exports.MIN_STATUS_INTERVAL_SEC = 30;
 /** Longest configurable status interval. */
 exports.MAX_STATUS_INTERVAL_SEC = 3_600;
+/**
+ * Default diagnostics heartbeat interval.
+ *
+ * Off. A health line every two minutes would bury the lines that say what
+ * actually happened. Turn it on when you are diagnosing a problem.
+ */
+exports.DEFAULT_DIAGNOSTICS_INTERVAL_SEC = 0;
+/** Shortest configurable diagnostics interval when diagnostics are on. */
+exports.MIN_DIAGNOSTICS_INTERVAL_SEC = 30;
+/** Longest configurable diagnostics interval. */
+exports.MAX_DIAGNOSTICS_INTERVAL_SEC = 3_600;
+/**
+ * How long MQTT may be down before diagnostics call health degraded.
+ *
+ * Startup and a brief reconnect both take seconds. A minute is long enough
+ * that a flap is not a health event, and short enough that a real outage
+ * shows on the next heartbeat.
+ */
+exports.MQTT_DOWN_GRACE_SEC = 60;
 /**
  * Refresh the session this long before its credentials expire.
  *

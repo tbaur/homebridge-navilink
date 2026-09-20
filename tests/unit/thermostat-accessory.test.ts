@@ -219,7 +219,7 @@ describe('setting a temperature', () => {
     await target.write(45)
     await flushCoalesce()
     expect(target.value).toBe(48.9)
-    expect(built.log.calls.some((line) => line.includes('could not set the temperature')))
+    expect(built.log.calls.some((line) => line.includes('setpoint failed')))
       .toBe(true)
   })
 
@@ -229,8 +229,7 @@ describe('setting a temperature', () => {
       .getCharacteristic(characteristics.TargetTemperature).write(45)
     await flushCoalesce()
     expect(built.control.dhwSetpoint).toEqual([])
-    expect(built.log.calls.some((line) => line.includes('before the appliance has reported')))
-      .toBe(true)
+    expect(built.log.calls.some((line) => line.includes('no limits yet'))).toBe(true)
   })
 
   it('ignores a value HomeKit sent that is not a number', async () => {
@@ -260,7 +259,7 @@ describe('read-only mode', () => {
     await target.write(46)
     await flushCoalesce()
     expect(built.control.dhwSetpoint).toEqual([])
-    const explained = built.log.calls.filter((line) => line.includes('options.readOnly is on'))
+    const explained = built.log.calls.filter((line) => line.includes('readOnly; write ignored'))
     expect(explained).toHaveLength(1)
   })
 
@@ -329,7 +328,7 @@ describe('the space-heating thermostat', () => {
     })
     accessory.applyObservation(observation({ heatingSupported: false }), 'startup')
     accessory.applyObservation(observation({ heatingSupported: false }), 'push')
-    const warned = built.log.calls.filter((line) => line.includes('no space-heating loop'))
+    const warned = built.log.calls.filter((line) => line.includes('no heating loop'))
     expect(warned).toHaveLength(1)
   })
 
@@ -473,7 +472,7 @@ describe('switching a thermostat on and off', () => {
       .getCharacteristic(characteristics.TargetHeatingCoolingState)
       .write(characteristics.TargetHeatingCoolingState.HEAT)
     await settle()
-    expect(built.log.calls.some((line) => line.includes('could not change the power state')))
+    expect(built.log.calls.some((line) => line.includes('power failed')))
       .toBe(true)
   })
 
@@ -518,7 +517,7 @@ describe('read-only mode', () => {
       .getCharacteristic(characteristics.TargetTemperature).write(45)
     await flushCoalesce()
     expect(built.control.dhwSetpoint).toEqual([])
-    expect(built.log.calls.some((line) => line.includes('options.readOnly'))).toBe(true)
+    expect(built.log.calls.some((line) => line.includes('readOnly; write ignored'))).toBe(true)
   })
 
   it('says it once, not once per drag of the dial', async () => {
@@ -529,7 +528,7 @@ describe('read-only mode', () => {
     await flushCoalesce()
     await target.write(46)
     await flushCoalesce()
-    const explained = built.log.calls.filter((line) => line.includes('options.readOnly'))
+    const explained = built.log.calls.filter((line) => line.includes('readOnly; write ignored'))
     expect(explained).toHaveLength(1)
   })
 
@@ -561,7 +560,6 @@ describe('setting a temperature before the appliance has said what it accepts', 
     await target.write(45)
     await flushCoalesce()
     expect(built.control.dhwSetpoint).toEqual([])
-    expect(built.log.calls.some((line) => line.includes('before the appliance has reported')))
-      .toBe(true)
+    expect(built.log.calls.some((line) => line.includes('no limits yet'))).toBe(true)
   })
 })

@@ -91,7 +91,7 @@ export abstract class BaseAccessory {
       // A subclass fault must not stop the other accessories being updated
       // from the same frame.
       this.host.log.debug(
-        `${forLog(this.displayName)}: could not apply an observation: ${describeError(error)}`,
+        `${forLog(this.displayName)}: apply failed: ${describeError(error)}`,
       )
     }
   }
@@ -157,8 +157,7 @@ export abstract class BaseAccessory {
     const outcome = await raceTimeout(started, HOMEKIT_WRITE_BUDGET_MS)
     if (outcome === TIMED_OUT) {
       this.host.log.debug(
-        `${forLog(this.displayName)}: ${label} is taking longer than `
-        + `${HOMEKIT_WRITE_BUDGET_MS}ms; answering HomeKit and finishing in the background`,
+        `${forLog(this.displayName)}: ${label} still in flight after ${HOMEKIT_WRITE_BUDGET_MS}ms`,
       )
       void settled
     }
@@ -209,18 +208,15 @@ export abstract class BaseAccessory {
    * True when the write must not happen, having said so at most once.
    *
    * Shared so a thermostat, a power switch and recirculation all use the same
-   * sentence when `options.readOnly` is on.
+   * line when `options.readOnly` is on.
    */
-  protected declineIfReadOnly(what: string): boolean {
+  protected declineIfReadOnly(): boolean {
     if (!this.host.isReadOnly) {
       return false
     }
     if (!this.hasExplainedReadOnly) {
       this.hasExplainedReadOnly = true
-      this.host.log.info(
-        `${forLog(this.displayName)}: ignoring a request to ${what}; `
-        + 'options.readOnly is on in the plugin settings',
-      )
+      this.host.log.info(`${forLog(this.displayName)}: readOnly; write ignored`)
     }
     return true
   }

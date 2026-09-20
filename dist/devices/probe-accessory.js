@@ -40,11 +40,11 @@ const FIELD_BY_KIND = {
 };
 /** What to say when a probe turns out not to exist. */
 const ABSENCE_HINT = {
-    dhwOutlet: 'the appliance is not reporting a hot water outlet temperature',
-    dhwInlet: 'the appliance is not reporting a hot water inlet temperature',
-    heatSupply: 'the appliance is not reporting a heating flow temperature',
-    heatReturn: 'the appliance is not reporting a heating return temperature',
-    outdoor: 'no outdoor sensor is fitted, so there is nothing to report',
+    dhwOutlet: 'no outlet temp',
+    dhwInlet: 'no inlet temp',
+    heatSupply: 'no flow temp',
+    heatReturn: 'no return temp',
+    outdoor: 'no outdoor sensor',
 };
 /** One appliance temperature probe, as a HomeKit sensor. */
 class ProbeAccessory extends base_accessory_1.BaseAccessory {

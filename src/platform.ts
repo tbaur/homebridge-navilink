@@ -59,6 +59,11 @@ import {
   type AccessoryInit,
   type ControlIntent,
 } from './devices'
+import { DiagnosticsCollector, type DiagnosticsReaders } from './diagnostics/collector'
+import {
+  formatDiagnosticLine,
+  formatHealthTransitionLine,
+} from './diagnostics/format'
 import { NaviLinkSession, type ControlSpec } from './session'
 import {
   DEFAULT_MODEL,
@@ -72,6 +77,8 @@ import {
 import type {
   AccessoryKind,
   ChannelObservation,
+  DiagnosticsSnapshot,
+  NaviLinkPlatformConfig,
   RefreshReason,
   ResolvedAccessory,
   ResolvedDevice,
@@ -113,9 +120,20 @@ export class NaviLinkPlatform implements DynamicPlatformPlugin, AccessoryHost {
     statusIntervalSec: DEFAULT_STATUS_INTERVAL_SEC,
     allowPowerOff: false,
     readOnly: false,
+    diagnosticsInterval: 0,
+    structuredLogs: false,
+    accessoryPrefix: '',
   }
 
   private session: NaviLinkSession | undefined
+
+  private readonly platformConfig: NaviLinkPlatformConfig
+
+  private readonly diagnostics: DiagnosticsCollector
+
+  private diagnosticsTimer: ReturnType<typeof setInterval> | undefined
+
+  private lastDiagnosticsHealth: 'healthy' | 'degraded' | null = null
 
   /** True when configuration was unusable and nothing should be attempted. */
   private disabled = false
@@ -131,6 +149,11 @@ export class NaviLinkPlatform implements DynamicPlatformPlugin, AccessoryHost {
     this.Service = api.hap.Service
     this.Characteristic = api.hap.Characteristic
     this.pluginVersion = readPluginVersion(log)
+    this.platformConfig = config as NaviLinkPlatformConfig
+    this.diagnostics = new DiagnosticsCollector({
+      pluginVersion: this.pluginVersion,
+      config: this.platformConfig,
+    })
 
     const result = validateConfig(config)
     for (const warning of result.warnings) {
@@ -143,10 +166,7 @@ export class NaviLinkPlatform implements DynamicPlatformPlugin, AccessoryHost {
       for (const error of result.errors) {
         this.log.error(error)
       }
-      this.log.error(
-        'the NaviLink platform is disabled. Cached accessories are left registered and will '
-        + 'show as No Response, so your rooms and automations are preserved.',
-      )
+      this.log.error('platform disabled; cached accessories kept')
       // Still registered so Homebridge does not complain about orphans, and so
       // fixing the configuration restores them rather than recreating them.
       api.on('didFinishLaunching', () => this.keepRestoredRegistered())
@@ -183,7 +203,7 @@ export class NaviLinkPlatform implements DynamicPlatformPlugin, AccessoryHost {
     devices: readonly ResolvedDevice[],
   ): void {
     const warnings: string[] = []
-    const accessories = resolveAccessories(devices, warnings)
+    const accessories = resolveAccessories(devices, warnings, this.options.accessoryPrefix)
     for (const warning of warnings) {
       this.log.warn(warning)
     }
@@ -194,6 +214,7 @@ export class NaviLinkPlatform implements DynamicPlatformPlugin, AccessoryHost {
       account,
       devices,
       statusIntervalSec: this.options.statusIntervalSec,
+      metrics: this.diagnostics,
     })
     session.onObservation((deviceId, observation, reason) => {
       this.distribute(deviceId, observation, reason)
@@ -202,13 +223,15 @@ export class NaviLinkPlatform implements DynamicPlatformPlugin, AccessoryHost {
     session.onStale((deviceId) => this.markDeviceUnreachable(deviceId))
     this.session = session
     session.start()
+    this.startDiagnostics()
 
     this.log.info(
-      `NaviLink is watching ${devices.length} appliance(s) with ${accessories.length} accessory(ies)`,
+      `${devices.length} appliance(s), ${accessories.length} accessory(ies)`,
     )
   }
 
   private async stop(): Promise<void> {
+    this.stopDiagnostics()
     for (const handler of this.handlers.values()) {
       handler.stop()
     }
@@ -226,8 +249,7 @@ export class NaviLinkPlatform implements DynamicPlatformPlugin, AccessoryHost {
       this.reviveAsUnavailable(accessory)
     }
     this.log.warn(
-      `${this.restored.size} cached accessory(ies) are registered but inactive until the `
-      + 'configuration is fixed',
+      `${this.restored.size} cached accessory(ies) inactive (config invalid)`,
     )
   }
 
@@ -276,7 +298,7 @@ export class NaviLinkPlatform implements DynamicPlatformPlugin, AccessoryHost {
       .map(([, accessory]) => accessory)
     if (stale.length > 0) {
       for (const accessory of stale) {
-        this.log.info(`removing ${forLog(accessory.displayName)}, no longer in the configuration`)
+        this.log.info(`removing ${forLog(accessory.displayName)}`)
         this.restored.delete(accessory.UUID)
       }
       this.api.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, stale)
@@ -305,7 +327,7 @@ export class NaviLinkPlatform implements DynamicPlatformPlugin, AccessoryHost {
     if (!hasAccessoryIdentity(context, resolved)) {
       // Cannot happen: the context was just written from `resolved`. Checked
       // anyway because getting it wrong silently re-keys somebody's tile.
-      this.log.warn(`${forLog(resolved.name)}: accessory identity did not bind; skipping it`)
+      this.log.warn(`${forLog(resolved.name)}: identity bind failed; skipped`)
       return
     }
     if (accessory.displayName !== resolved.name) {
@@ -346,7 +368,7 @@ export class NaviLinkPlatform implements DynamicPlatformPlugin, AccessoryHost {
       case 'fault':
         return new FaultAccessory(init)
       default:
-        this.log.warn(`${forLog(init.displayName)}: unknown accessory kind; skipping it`)
+        this.log.warn(`${forLog(init.displayName)}: unknown kind; skipped`)
         return undefined
     }
   }
@@ -404,9 +426,9 @@ export class NaviLinkPlatform implements DynamicPlatformPlugin, AccessoryHost {
     this.cloudOffline = true
     if (isNew || now - this.lastOutageWarnAt > UNREACHABLE_REWARN_MS) {
       this.lastOutageWarnAt = now
-      this.log.warn(`NaviLink is not answering: ${describeError(error)}`)
+      this.log.warn(describeOutage(error))
     } else {
-      this.log.debug(`NaviLink is still not answering: ${describeError(error)}`)
+      this.log.debug(describeOutage(error, { repeating: true }))
     }
     for (const handler of this.handlers.values()) {
       handler.noteUnreachable(error)
@@ -435,7 +457,7 @@ export class NaviLinkPlatform implements DynamicPlatformPlugin, AccessoryHost {
     }
     this.cloudOffline = false
     this.lastOutageWarnAt = 0
-    this.log.info('NaviLink is answering again')
+    this.log.info('mqtt recovered')
   }
 
   // --- AccessoryHost ----------------------------------------------------------
@@ -462,13 +484,11 @@ export class NaviLinkPlatform implements DynamicPlatformPlugin, AccessoryHost {
   control(deviceId: string): ControlIntent {
     const send = (spec: ControlSpec): Promise<void> => {
       if (this.options.readOnly) {
-        return Promise.reject(new ControlRejectedError(
-          `options.readOnly is on in the plugin settings, so ${spec.what} was not sent`,
-        ))
+        return Promise.reject(new ControlRejectedError(`readOnly; ${spec.what} not sent`))
       }
       const session = this.session
       if (session === undefined) {
-        return Promise.reject(new ControlRejectedError('the NaviLink session is not running'))
+        return Promise.reject(new ControlRejectedError('session not running'))
       }
       return session.publishControl(deviceId, spec)
     }
@@ -483,9 +503,7 @@ export class NaviLinkPlatform implements DynamicPlatformPlugin, AccessoryHost {
     const requireScale = (): TemperatureScale => {
       const observation = this.observationFor(deviceId)
       if (observation === undefined) {
-        throw new ControlRejectedError(
-          'the appliance has not reported its temperature scale yet',
-        )
+        throw new ControlRejectedError('scale unknown')
       }
       return observation.scale
     }
@@ -493,11 +511,7 @@ export class NaviLinkPlatform implements DynamicPlatformPlugin, AccessoryHost {
     return {
       setPower: async (on) => {
         if (!on && !this.options.allowPowerOff) {
-          throw new ControlRejectedError(
-            'switching the appliance off from HomeKit is disabled, because it stops central '
-            + 'heating as well as hot water. Turn on "Allow HomeKit to switch the appliance '
-            + 'off" in the plugin settings if that is what you want.',
-          )
+          throw new ControlRejectedError('power-off disabled (allowPowerOff is off)')
         }
         await send({
           command: Command.POWER,
@@ -537,6 +551,119 @@ export class NaviLinkPlatform implements DynamicPlatformPlugin, AccessoryHost {
       },
     }
   }
+
+  private diagnosticsIntervalMs(): number {
+    const seconds = this.options.diagnosticsInterval
+    return seconds > 0 ? seconds * 1_000 : 0
+  }
+
+  private startDiagnostics(): void {
+    const interval = this.diagnosticsIntervalMs()
+    if (interval <= 0 || this.diagnosticsTimer !== undefined) {
+      return
+    }
+    try {
+      this.emitDiagnostic(
+        'info',
+        this.diagnostics.snapshot('diagnostics.start', this.buildDiagnosticsReaders()),
+      )
+    } catch (error) {
+      this.log.debug(`Failed to emit diagnostics start snapshot: ${describeError(error)}`)
+    }
+    this.diagnosticsTimer = setInterval(() => this.diagnosticsHeartbeat(), interval)
+    this.diagnosticsTimer.unref?.()
+  }
+
+  private stopDiagnostics(): void {
+    if (this.diagnosticsTimer === undefined) {
+      return
+    }
+    try {
+      this.emitDiagnostic(
+        'info',
+        this.diagnostics.snapshot('diagnostics.stop', this.buildDiagnosticsReaders()),
+      )
+    } catch (error) {
+      this.log.debug(`Failed to emit diagnostics stop snapshot: ${describeError(error)}`)
+    }
+    clearInterval(this.diagnosticsTimer)
+    this.diagnosticsTimer = undefined
+  }
+
+  private diagnosticsHeartbeat(): void {
+    try {
+      const report = this.diagnostics.buildHeartbeat(this.buildDiagnosticsReaders())
+      this.emitDiagnostic('info', report)
+      const health = report.lifecycle.health
+      if (this.lastDiagnosticsHealth !== null && health !== this.lastDiagnosticsHealth) {
+        const isDegraded = health === 'degraded'
+        this.emitDiagnostic(isDegraded ? 'warn' : 'info', {
+          ...report,
+          msg: isDegraded ? 'health.degraded' : 'health.recovered',
+        }, { concise: true })
+      }
+      this.lastDiagnosticsHealth = health
+    } catch (error) {
+      this.log.debug(`Diagnostics heartbeat failed: ${describeError(error)}`)
+    }
+  }
+
+  private buildDiagnosticsReaders(): DiagnosticsReaders {
+    const health = this.session?.health()
+    const now = Date.now()
+    return {
+      devices: () => ({
+        total: this.devices.size,
+        online: health?.onlineDeviceIds.length ?? 0,
+      }),
+      mqttState: () => health?.mqttState ?? 'stopped',
+      lastMqttEventAgeSec: () => {
+        if (health?.lastMqttEventAt === null || health?.lastMqttEventAt === undefined) {
+          return null
+        }
+        return Math.round((now - health.lastMqttEventAt) / 1_000)
+      },
+      tokenExpiresInSec: () => {
+        if (health?.expiresAt === null || health?.expiresAt === undefined) {
+          return null
+        }
+        return Math.round((health.expiresAt - now) / 1_000)
+      },
+      tokenLastRefreshAt: () => health?.lastRefreshAt ?? null,
+      pollingCadenceSec: () => this.options.statusIntervalSec,
+    }
+  }
+
+  private emitDiagnostic(
+    level: 'info' | 'warn',
+    report: DiagnosticsSnapshot,
+    options: { concise?: boolean } = {},
+  ): void {
+    this.log[level](
+      options.concise === true
+        ? formatHealthTransitionLine(report)
+        : formatDiagnosticLine(report),
+    )
+    if (this.options.structuredLogs) {
+      this.log[level](JSON.stringify(report))
+    }
+  }
+}
+
+/**
+ * One outage line for the whole account.
+ *
+ * A broker close already names NaviLink, so it is logged as-is. Anything else
+ * is prefixed so a generic `socket hang up` still names the outage.
+ */
+function describeOutage(error: unknown, options: { repeating?: boolean } = {}): string {
+  const detail = describeError(error)
+  if (detail.startsWith('NaviLink ')) {
+    return detail
+  }
+  return options.repeating === true
+    ? `not answering (repeat): ${detail}`
+    : `not answering: ${detail}`
 }
 
 /** Describe an error for the log, re-exported so the entry point can use it. */

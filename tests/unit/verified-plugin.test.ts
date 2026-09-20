@@ -126,6 +126,22 @@ describe('config.schema.json (Homebridge verification CI)', () => {
       expect.objectContaining({ default: 120, minimum: 30, maximum: 3600 }),
     )
   })
+
+  it('matches the runtime default and range for diagnostics', () => {
+    expect(schema.schema.properties.options?.properties?.diagnosticsInterval).toEqual(
+      expect.objectContaining({ default: 0, minimum: 0, maximum: 3600 }),
+    )
+    expect(schema.schema.properties.options?.properties?.structuredLogs).toEqual(
+      expect.objectContaining({ type: 'boolean', default: false }),
+    )
+  })
+
+  it('offers an accessory prefix without baking a room name into the default', () => {
+    expect(schema.schema.properties.options?.properties?.accessoryPrefix).toEqual(
+      expect.objectContaining({ type: 'string', maxLength: 64 }),
+    )
+    expect(schema.schema.properties.options?.properties?.accessoryPrefix).not.toHaveProperty('default')
+  })
 })
 
 describe('package.json (Homebridge verification CI)', () => {

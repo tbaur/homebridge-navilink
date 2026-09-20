@@ -127,10 +127,24 @@ describe('describing an account', () => {
     const rest = fakeRest({ devices: [listedDevice({ connected: 0 })] })
     const built = build({ rest })
     const found = await built.discovery.discover('someone@example.com', 'hunter2')
-    expect(built.log.calls.some((line) => line.includes('offline according to the cloud')))
+    expect(built.log.calls.some((line) => line.includes('cloud reports offline')))
       .toBe(true)
     expect(found[0]?.online).toBe(false)
     expect(found[0]?.described).toBe(true)
+  })
+
+  it('does not log the cloud appliance name on discovery warnings', async () => {
+    const rest = fakeRest({
+      devices: [listedDevice({ connected: 0, deviceName: 'Utility Room' })],
+    })
+    const built = build({ rest, answer: { info: false } })
+    await runOutTheClock(
+      built.discovery.discover('someone@example.com', 'hunter2'),
+      DISCOVERY_BUDGET_MS,
+    )
+    expect(built.log.calls.some((line) => line.includes('cloud reports offline'))).toBe(true)
+    expect(built.log.calls.some((line) => line.includes('no channelinfo'))).toBe(true)
+    expect(built.log.calls.some((line) => line.includes('Utility Room'))).toBe(false)
   })
 
   it('still lists an offline gateway that never described itself', async () => {

@@ -26,6 +26,8 @@
  * behind the MQTT connection are temporary. Waiting for the connection to
  * fail would mean a window of silence in the middle of a winter night, so the
  * session re-establishes itself a few minutes before the deadline instead.
+ * That close is expected: it is not logged as an outage and the tiles stay
+ * current, the same way the sibling plugins reconnect after a token refresh.
  *
  * **A connected socket does not mean a live appliance.** The broker will
  * happily hold a connection open for a gateway that has gone offline. So
@@ -71,11 +73,30 @@ class NaviLinkSession {
     pollInFlight = false;
     /** Aborts in-flight REST so shutdown does not wait out a 30s request deadline. */
     abort = new AbortController();
+    expiresAt;
+    lastRefreshAt;
+    lastMqttEventAt;
+    /** Families already announced at info, so a later channelinfo is not a new event. */
+    announcedFamilies = new Set();
+    /** Firmware lines already announced at info, so a credential refresh is not a new event. */
+    announcedFirmware = new Set();
+    /** True after the first `mqtt up` line, so a refresh is not a boot. */
+    liveAnnounced = false;
+    /** True after an unexpected drop, so the next connect is a recovery. */
+    liveWasDown = false;
+    /** True when the current wait ended because this plugin closed the socket. */
+    lastCloseWasExpected = false;
     constructor(options) {
         this.options = options;
         this.log = options.log;
         this.now = options.now ?? Date.now;
-        this.rest = options.rest ?? new rest_1.NaviLinkRest({ log: options.log, signal: this.abort.signal });
+        this.rest = options.rest ?? new rest_1.NaviLinkRest({
+            log: options.log,
+            signal: this.abort.signal,
+            ...(options.metrics === undefined
+                ? {}
+                : { metrics: (sample) => options.metrics?.apiRequest(sample.durationMs, sample.ok) }),
+        });
     }
     /** Register a handler for fresh state. */
     onObservation(listener) {
@@ -88,6 +109,25 @@ class NaviLinkSession {
     /** Register a handler for one appliance going stale while the broker is up. */
     onStale(listener) {
         this.staleListeners.push(listener);
+    }
+    /** In-memory gauges for diagnostics. Never reads the network. */
+    health() {
+        const mqttState = this.fatal !== undefined
+            ? 'auth-failed'
+            : !this.running
+                ? 'stopped'
+                : this.connection?.isConnected === true
+                    ? 'running'
+                    : 'connecting';
+        return {
+            mqttState,
+            lastMqttEventAt: this.lastMqttEventAt ?? null,
+            expiresAt: this.expiresAt ?? null,
+            lastRefreshAt: this.lastRefreshAt ?? null,
+            onlineDeviceIds: this.options.devices
+                .filter((device) => this.observationFor(device.id) !== undefined)
+                .map((device) => device.id),
+        };
     }
     /**
      * The current state of a device, or undefined when there is none to trust.
@@ -159,14 +199,14 @@ class NaviLinkSession {
         }
         if (this.now() < gateway.controlLockedUntil) {
             const seconds = Math.ceil((gateway.controlLockedUntil - this.now()) / 1_000);
-            throw new utils_1.ControlRejectedError(`the appliance refused a recent command for being too quick; `
-                + `not sending another for ${seconds}s`);
+            throw new utils_1.ControlRejectedError(`rate limited; retry in ${seconds}s`);
         }
         const since = this.now() - gateway.lastControlAt;
         if (since < settings_1.CONTROL_RATE_LIMIT_MS) {
             await (0, utils_1.sleep)(settings_1.CONTROL_RATE_LIMIT_MS - since);
         }
         gateway.lastControlAt = this.now();
+        this.options.metrics?.command();
         const frame = spec.build({
             context: gateway.context,
             topics: gateway.topics,
@@ -203,6 +243,15 @@ class NaviLinkSession {
                 await this.establish();
                 attempt = 0;
                 await this.waitForSessionEnd();
+                if (!this.running) {
+                    return;
+                }
+                // A credential refresh closes the socket on purpose. Re-sign-in is
+                // immediate, like the sibling plugins' token-refresh reconnect: no
+                // outage line, no backoff, no recovery line for a drop we caused.
+                if (this.lastCloseWasExpected) {
+                    continue;
+                }
             }
             catch (error) {
                 if (error instanceof utils_1.AuthenticationError && error.credentialsRejected) {
@@ -211,7 +260,7 @@ class NaviLinkSession {
                 }
                 attempt += 1;
                 this.notifyUnreachable(error);
-                this.log.warn(`NaviLink session failed: ${(0, utils_1.describeError)(error)}`);
+                this.log.warn(`session failed: ${(0, utils_1.describeError)(error)}`);
             }
             if (!this.running) {
                 return;
@@ -223,7 +272,7 @@ class NaviLinkSession {
                 maxMs: settings_1.RECONNECT_BACKOFF_MAX_MS,
                 ...(this.options.random === undefined ? {} : { random: this.options.random }),
             });
-            this.log.debug(`reconnecting to NaviLink in ${Math.round(delay / 1_000)}s`);
+            this.log.info(`reconnect in ${Math.round(delay / 1_000)}s`);
             const backoff = (0, utils_1.interruptibleSleep)(delay);
             this.backoffSleep = backoff;
             await backoff.promise;
@@ -235,7 +284,12 @@ class NaviLinkSession {
         this.clearTimers();
         this.dropConnection();
         const tokens = await this.rest.signIn(this.options.account.email, this.options.account.password);
-        this.log.info(`signed in to NaviLink as ${(0, utils_1.maskEmail)(this.options.account.email)}`);
+        this.expiresAt = tokens.expiresAt;
+        if (this.lastRefreshAt !== undefined) {
+            this.options.metrics?.sessionRefresh();
+        }
+        this.lastRefreshAt = this.now();
+        this.log.debug(`signed in as ${(0, utils_1.maskEmail)(this.options.account.email)}`);
         const listed = await this.rest.listDevices({
             email: this.options.account.email,
             accessToken: tokens.accessToken,
@@ -260,12 +314,11 @@ class NaviLinkSession {
         this.gateways.clear();
         for (const entry of listed) {
             if (!wanted.has(entry.macAddress)) {
-                this.log.debug(`ignoring gateway ${(0, utils_1.maskMac)(entry.macAddress)}: not in the configuration`);
+                this.log.debug(`ignoring ${this.nameFor(entry.macAddress)}: not configured`);
                 continue;
             }
             if (entry.connected !== 2) {
-                this.log.warn(`gateway ${(0, utils_1.maskMac)(entry.macAddress)} is offline according to the cloud; `
-                    + 'subscribing anyway in case that flag is stale');
+                this.log.warn(`${this.nameFor(entry.macAddress)}: cloud reports offline; subscribing`);
             }
             const context = {
                 macAddress: entry.macAddress,
@@ -286,8 +339,7 @@ class NaviLinkSession {
         }
         for (const mac of wanted) {
             if (!this.gateways.has(mac)) {
-                this.log.warn(`the configured appliance ${(0, utils_1.maskMac)(mac)} is not on this NaviLink account; `
-                    + 'open the plugin settings and sign in again');
+                this.log.warn(`${this.nameFor(mac)}: not on this account`);
             }
         }
     }
@@ -314,7 +366,15 @@ class NaviLinkSession {
                 });
                 if (firmware !== undefined) {
                     this.firmwareByMac.set(gateway.listed.macAddress, firmware);
-                    this.log.info(`gateway ${(0, utils_1.maskMac)(gateway.listed.macAddress)} is on firmware ${firmware}`);
+                    const line = `${this.nameFor(gateway.listed.macAddress)} firmware ${firmware}`;
+                    const key = `${gateway.listed.macAddress}:${firmware}`;
+                    if (this.announcedFirmware.has(key)) {
+                        this.log.debug(line);
+                    }
+                    else {
+                        this.announcedFirmware.add(key);
+                        this.log.info(line);
+                    }
                 }
             }
             catch (error) {
@@ -326,6 +386,14 @@ class NaviLinkSession {
     firmwareFor(deviceId) {
         const mac = (0, identity_1.parseDeviceId)(deviceId)?.mac;
         return mac === undefined ? undefined : this.firmwareByMac.get(mac);
+    }
+    /** Appliance name from config, or a labelled masked gateway if there is none. */
+    nameFor(mac, channel) {
+        const onGateway = this.options.devices.filter((device) => (0, identity_1.parseDeviceId)(device.id)?.mac === mac);
+        const exact = channel === undefined
+            ? undefined
+            : onGateway.find((device) => (0, identity_1.parseDeviceId)(device.id)?.channel === channel);
+        return (0, utils_1.labelAppliance)({ mac, name: exact?.name ?? onGateway[0]?.name });
     }
     /**
      * Open the MQTT connection, trying both Host header signatures.
@@ -347,7 +415,14 @@ class NaviLinkSession {
                 // Close is only a session event after the connection is the live one.
                 // A refused fallback must not look like an outage mid-establish.
                 connection.onClose((error) => this.handleConnectionClosed(connection, error));
-                this.log.info('NaviLink live connection is up');
+                if (!this.liveAnnounced || this.liveWasDown) {
+                    this.log.info('mqtt up');
+                    this.liveAnnounced = true;
+                    this.liveWasDown = false;
+                }
+                else {
+                    this.log.debug('mqtt up');
+                }
                 return;
             }
             catch (error) {
@@ -395,7 +470,10 @@ class NaviLinkSession {
         }
         this.connection = undefined;
         this.clearTimers();
-        if (this.running) {
+        this.lastCloseWasExpected = error instanceof utils_1.ConnectionError && error.expected;
+        if (this.running && !this.lastCloseWasExpected) {
+            this.liveWasDown = true;
+            this.options.metrics?.mqttReconnect();
             this.notifyUnreachable(error);
         }
         const ended = this.sessionEnded;
@@ -413,8 +491,7 @@ class NaviLinkSession {
         this.fatal = error;
         this.clearTimers();
         this.dropConnection();
-        this.log.error(`${error.message}. The plugin has stopped signing in so the account is not locked out. `
-            + 'Correct the email address or password in the plugin settings and restart Homebridge.');
+        this.log.error(`${error.message}; sign-in stopped`);
         this.notifyUnreachable(error);
     }
     /** True when the session has given up for a reason the user must fix. */
@@ -450,21 +527,25 @@ class NaviLinkSession {
         });
         await connection.publish(frame.topic, frame.payload, settings_1.STATUS_RESPONSE_TIMEOUT_MS);
     }
-    /** Ask every known channel for its state. */
+    /** Ask every known channel for its state. Returns how many requests failed. */
     async requestAllStatus() {
+        let failed = 0;
         for (const gateway of this.gateways.values()) {
             for (const channelNumber of gateway.infoByChannel.keys()) {
                 try {
                     await this.requestStatus(gateway, channelNumber);
                 }
                 catch (error) {
+                    failed += 1;
                     this.log.debug(`status request failed: ${(0, utils_1.describeError)(error)}`);
                 }
             }
         }
+        return failed;
     }
     // --- Inbound ----------------------------------------------------------------
     handleMessage(topic, payload) {
+        this.lastMqttEventAt = this.now();
         const kind = (0, topics_1.classifyTopic)(topic);
         if (kind === 'other') {
             return;
@@ -492,7 +573,7 @@ class NaviLinkSession {
                 this.handleControlFailure(gateway, frame);
                 return;
             case 'connection':
-                this.log.debug(`${(0, utils_1.maskMac)(gateway.listed.macAddress)}: gateway connection event`);
+                this.log.debug(`${this.nameFor(gateway.listed.macAddress)}: gateway connection event`);
                 return;
         }
     }
@@ -533,14 +614,13 @@ class NaviLinkSession {
     handleControlFailure(gateway, frame) {
         const response = frame;
         const failCode = response.response?.failCode;
-        const mac = (0, utils_1.maskMac)(gateway.listed.macAddress);
+        const label = this.nameFor(gateway.listed.macAddress);
         if (failCode === settings_1.CONTROL_INTERVAL_FAIL_CODE) {
             gateway.controlLockedUntil = this.now() + settings_1.CONTROL_LOCKOUT_MS;
-            this.log.warn(`${mac}: the appliance refused a command for arriving too soon after the last one. `
-                + `Pausing commands for ${Math.round(settings_1.CONTROL_LOCKOUT_MS / 1_000)}s.`);
+            this.log.warn(`${label}: rate limited; pause ${Math.round(settings_1.CONTROL_LOCKOUT_MS / 1_000)}s`);
             return;
         }
-        this.log.warn(`${mac}: the appliance refused a control command`
+        this.log.warn(`${label}: control refused`
             + `${typeof failCode === 'number' ? ` (failCode ${failCode})` : ''}`);
     }
     handleChannelInfo(gateway, frame) {
@@ -551,7 +631,7 @@ class NaviLinkSession {
         for (const channel of channels) {
             gateway.infoByChannel.set(channel.channelNumber, channel);
         }
-        this.log.debug(`${(0, utils_1.maskMac)(gateway.listed.macAddress)}: ${channels.length} channel(s) described`);
+        this.log.debug(`${this.nameFor(gateway.listed.macAddress)}: ${channels.length} channel(s) described`);
         this.logChannelFamilies(gateway);
         this.warnMissingChannels(gateway);
         // Now that the channels and their unit counts are known, ask each for its
@@ -568,15 +648,13 @@ class NaviLinkSession {
         if (info === undefined) {
             // A status frame before its description. Nothing can be read from it, so
             // ask for the description rather than guessing at the scale.
-            this.log.debug(`${(0, utils_1.maskMac)(gateway.listed.macAddress)}: status for an undescribed channel; `
-                + 'asking for the channel list');
+            this.log.debug(`${this.nameFor(gateway.listed.macAddress)}: status before channelinfo; requesting`);
             void this.requestChannelInfo(gateway);
             return;
         }
         const observation = (0, channel_1.decodeChannel)({ info, status, now: this.now() });
         if (observation === undefined) {
-            this.log.debug(`${(0, utils_1.maskMac)(gateway.listed.macAddress)}: the appliance has not reported its `
-                + 'temperature scale yet');
+            this.log.debug(`${this.nameFor(gateway.listed.macAddress)}: scale unknown`);
             return;
         }
         const deviceId = (0, identity_1.makeDeviceId)(gateway.listed.macAddress, status.channelNumber);
@@ -584,6 +662,9 @@ class NaviLinkSession {
             ? (this.pollInFlight ? 'poll' : 'push')
             : 'startup';
         this.observations.set(deviceId, observation);
+        if (reason === 'push') {
+            this.options.metrics?.push();
+        }
         this.emit(deviceId, observation, reason);
     }
     emit(deviceId, observation, reason) {
@@ -617,12 +698,18 @@ class NaviLinkSession {
     /** Ask every known channel, labelled as a poll so accessories can tell. */
     async pollAllStatus() {
         this.pollInFlight = true;
+        const started = this.now();
+        let failed = 0;
         try {
-            await this.requestAllStatus();
+            failed = await this.requestAllStatus();
+        }
+        catch {
+            failed += 1;
         }
         finally {
             this.pollInFlight = false;
             this.dropStaleObservations();
+            this.options.metrics?.pollCycle(failed === 0 ? 1 : 0, failed, this.now() - started);
         }
     }
     /**
@@ -656,11 +743,24 @@ class NaviLinkSession {
         this.connection = undefined;
         existing?.close();
     }
-    /** One line per channel so a bug report can say `family=` without a capture. */
+    /**
+     * One line per channel so a bug report can say `family=` without a capture.
+     *
+     * Channelinfo can arrive again on a poll, a reconnect, or a credential
+     * refresh. The first time is the useful one; repeats stay at debug.
+     */
     logChannelFamilies(gateway) {
         for (const channel of gateway.infoByChannel.values()) {
-            this.log.info(`${(0, utils_1.maskMac)(gateway.listed.macAddress)} channel ${channel.channelNumber} `
-                + `family=${(0, channel_1.familyOf)(channel.raw)}`);
+            const family = (0, channel_1.familyOf)(channel.raw);
+            const line = `${this.nameFor(gateway.listed.macAddress, channel.channelNumber)} `
+                + `channel ${channel.channelNumber} family=${family}`;
+            const key = `${gateway.listed.macAddress}:${channel.channelNumber}:${family}`;
+            if (this.announcedFamilies.has(key)) {
+                this.log.debug(line);
+                continue;
+            }
+            this.announcedFamilies.add(key);
+            this.log.info(line);
         }
     }
     /** A configured id whose channel is missing stays No Response otherwise. */
@@ -671,9 +771,7 @@ class NaviLinkSession {
                 continue;
             }
             if (!gateway.infoByChannel.has(parsed.channel)) {
-                this.log.warn(`configured appliance ${(0, utils_1.forLog)(device.name)} `
-                    + `(${(0, utils_1.maskMac)(parsed.mac)} channel ${parsed.channel}) is not in this `
-                    + 'gateway\'s channel list; it will stay No Response');
+                this.log.warn(`${(0, utils_1.forLog)(device.name)} channel ${parsed.channel}: not on gateway`);
             }
         }
     }
@@ -686,11 +784,15 @@ class NaviLinkSession {
      * is the only path known to produce a working set of AWS credentials, and a
      * brief reconnect on a timer we choose is better than an expiry we do not
      * control.
+     *
+     * The close is marked expected, so it is not logged as an outage and does
+     * not put the tiles into No Response. Sibling plugins do the same on a
+     * token-refresh reconnect.
      */
     scheduleRefresh(tokens) {
         const delay = Math.max(settings_1.MIN_REFRESH_DELAY_MS, tokens.expiresAt - this.now() - settings_1.CREDENTIAL_REFRESH_MARGIN_MS);
         this.refreshTimer = setTimeout(() => {
-            this.log.debug('NaviLink credentials are about to expire; re-establishing the session');
+            this.log.debug('credentials expiring; refresh');
             // A fresh client id, so the broker cannot mistake the new connection for
             // the old one and disconnect it as a duplicate.
             this.clientId = (0, node_crypto_1.randomUUID)();

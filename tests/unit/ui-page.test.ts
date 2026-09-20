@@ -123,7 +123,8 @@ async function settle(): Promise<void> {
 
 const ELEMENT_IDS = [
   'devices', 'summary', 'email', 'password', 'discover',
-  'interval', 'read-only', 'allow-power-off', 'toggle-json',
+  'interval', 'read-only', 'allow-power-off', 'accessory-prefix',
+  'diagnostics-interval', 'structured-logs', 'toggle-json',
 ]
 
 /** A discovered appliance, as the UI server would return it. */
@@ -269,6 +270,7 @@ describe('opening the page', () => {
     expect(page.byId('interval').value).toBe('120')
     expect(page.byId('read-only').checked).toBe(true)
     expect(page.byId('allow-power-off').checked).toBe(false)
+    expect(page.byId('accessory-prefix').value).toBe('')
   })
 
   it('keeps a hand-edited interval rather than snapping it to an offered one', async () => {
@@ -547,6 +549,51 @@ describe('what gets written', () => {
     page.byId('allow-power-off').fire('change')
     await page.settle()
     expect(page.savedOptions().allowPowerOff).toBe(true)
+  })
+
+  it('drops a default-off diagnostics interval rather than writing 0', async () => {
+    const page = await load({ config: configured })
+    page.byId('diagnostics-interval').value = '0'
+    page.byId('diagnostics-interval').fire('change')
+    await page.settle()
+    expect(page.savedOptions()).not.toHaveProperty('diagnosticsInterval')
+    expect(page.savedOptions()).not.toHaveProperty('structuredLogs')
+  })
+
+  it('drops a blank accessory prefix rather than writing an empty string', async () => {
+    const page = await load({
+      config: [{ ...configured[0], options: { accessoryPrefix: 'Zone One' } }],
+    })
+    page.byId('accessory-prefix').value = '  '
+    page.byId('accessory-prefix').fire('input')
+    await page.settle()
+    expect(page.savedOptions()).not.toHaveProperty('accessoryPrefix')
+  })
+
+  it('writes an accessory prefix when the user sets one', async () => {
+    const page = await load({ config: configured })
+    page.byId('accessory-prefix').value = 'Zone One'
+    page.byId('accessory-prefix').fire('input')
+    await page.settle()
+    expect(page.savedOptions().accessoryPrefix).toBe('Zone One')
+  })
+
+  it('restores a saved accessory prefix', async () => {
+    const page = await load({
+      config: [{ ...configured[0], options: { accessoryPrefix: 'Zone One' } }],
+    })
+    expect(page.byId('accessory-prefix').value).toBe('Zone One')
+  })
+
+  it('writes diagnostics options when the user turns them on', async () => {
+    const page = await load({ config: configured })
+    page.byId('diagnostics-interval').value = '300'
+    page.byId('diagnostics-interval').fire('change')
+    page.byId('structured-logs').checked = true
+    page.byId('structured-logs').fire('change')
+    await page.settle()
+    expect(page.savedOptions().diagnosticsInterval).toBe(300)
+    expect(page.savedOptions().structuredLogs).toBe(true)
   })
 
   it('keeps a setting this page does not model', async () => {

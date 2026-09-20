@@ -29,6 +29,7 @@ interface SessionSpy {
   publishControl: jest.Mock
   observationFor: jest.Mock
   firmwareFor: jest.Mock
+  health: jest.Mock
   applyOptimisticWrite: jest.Mock
   emitObservation(deviceId: string, value: ReturnType<typeof observation>): void
   emitUnreachable(error: unknown): void
@@ -49,6 +50,13 @@ beforeEach(() => {
       publishControl: jest.fn().mockResolvedValue(undefined),
       observationFor: jest.fn().mockReturnValue(undefined),
       firmwareFor: jest.fn().mockReturnValue(undefined),
+      health: jest.fn().mockReturnValue({
+        mqttState: 'running',
+        lastMqttEventAt: Date.now(),
+        expiresAt: Date.now() + 3_000_000,
+        lastRefreshAt: Date.now(),
+        onlineDeviceIds: [DEVICE_ID],
+      }),
       applyOptimisticWrite: jest.fn(),
       emitObservation: (deviceId, value) => {
         ;(onObservation as unknown as (
@@ -211,7 +219,7 @@ describe('bringing accessories up', () => {
 
   it('says how much it is watching, so the log shows the plugin came up', () => {
     const built = build()
-    expect(built.log.calls.some((line) => line.includes('NaviLink is watching 1 appliance(s)')))
+    expect(built.log.calls.some((line) => line.includes('1 appliance(s), 2 accessory(ies)')))
       .toBe(true)
   })
 
@@ -219,6 +227,15 @@ describe('bringing accessories up', () => {
     const built = build()
     expect(built.log.calls.some((line) => line.includes('adding Boiler Hot Water'))).toBe(true)
     expect(built.log.calls.some((line) => line.includes('adding Boiler Power'))).toBe(true)
+  })
+
+  it('uses the accessory prefix as the stem when one is set', () => {
+    const built = build({
+      config: config({ options: { accessoryPrefix: 'Zone One' } }),
+    })
+    expect(built.log.calls.some((line) => line.includes('adding Zone One Hot Water'))).toBe(true)
+    expect(built.log.calls.some((line) => line.includes('adding Zone One Power'))).toBe(true)
+    expect(built.log.calls.some((line) => line.includes('Boiler Hot Water'))).toBe(false)
   })
 
   it('adopts a restored accessory rather than registering a second one', () => {
@@ -259,7 +276,7 @@ describe('bringing accessories up', () => {
 
     expect(api.unregistered).toHaveLength(1)
     expect(log.calls.some((line) => (
-      line.includes('removing Boiler Recirculation, no longer in the configuration')
+      line.includes('removing Boiler Recirculation')
     ))).toBe(true)
   })
 
@@ -297,7 +314,7 @@ describe('unusable configuration', () => {
       config: { platform: 'NaviLink' } as PlatformConfig,
     })
     expect(sessions).toHaveLength(0)
-    expect(built.log.calls.some((line) => line.includes('the NaviLink platform is disabled')))
+    expect(built.log.calls.some((line) => line.includes('platform disabled')))
       .toBe(true)
   })
 
@@ -311,7 +328,7 @@ describe('unusable configuration', () => {
       } as PlatformConfig,
     })
     expect(sessions).toHaveLength(0)
-    expect(built.log.calls.some((line) => line.includes('the NaviLink platform is disabled')))
+    expect(built.log.calls.some((line) => line.includes('platform disabled')))
       .toBe(true)
   })
 
@@ -329,7 +346,7 @@ describe('unusable configuration', () => {
     // Unregistering would be tidier and would cost the user every automation
     // built on the tile, for what is usually a typo.
     expect(api.unregistered).toHaveLength(0)
-    expect(log.calls.some((line) => line.includes('1 cached accessory(ies) are registered')))
+    expect(log.calls.some((line) => line.includes('1 cached accessory(ies) inactive')))
       .toBe(true)
   })
 
@@ -337,7 +354,7 @@ describe('unusable configuration', () => {
     const built = build({ config: config({ email: '' }) })
     const errors = built.log.calls.filter((line) => line.startsWith('error '))
     expect(errors.some((line) => line.includes('email'))).toBe(true)
-    expect(errors.some((line) => line.includes('the NaviLink platform is disabled'))).toBe(true)
+    expect(errors.some((line) => line.includes('platform disabled'))).toBe(true)
   })
 
   it('reports no state at all while disabled', () => {
@@ -422,6 +439,32 @@ describe('Homebridge /check generated full config', () => {
   })
 })
 
+describe('diagnostics', () => {
+  it('emits nothing when diagnosticsInterval is 0', () => {
+    const built = build()
+    expect(built.log.calls.join('\n')).not.toContain('Diagnostics start')
+    expect(built.log.calls.join('\n')).not.toContain('Health:')
+  })
+
+  it('emits a start snapshot and a heartbeat when diagnostics are on', () => {
+    jest.useFakeTimers()
+    try {
+      const built = build({
+        config: config({
+          options: { diagnosticsInterval: 30, structuredLogs: true },
+        }),
+      })
+      expect(built.log.calls.some((line) => line.includes('Diagnostics start'))).toBe(true)
+      expect(built.log.calls.some((line) => line.includes('"msg":"diagnostics.start"'))).toBe(true)
+      built.log.calls.length = 0
+      jest.advanceTimersByTime(30_000)
+      expect(built.log.calls.some((line) => line.includes('Health:'))).toBe(true)
+    } finally {
+      jest.useRealTimers()
+    }
+  })
+})
+
 describe('the rules on writes', () => {
   it('refuses everything in read-only mode', async () => {
     const built = build({ config: config({ options: { readOnly: true } }) })
@@ -433,13 +476,13 @@ describe('the rules on writes', () => {
   it('names the setting that refused, so the log says how to change it', async () => {
     const built = build({ config: config({ options: { readOnly: true } }) })
     await expect(built.platform.control(DEVICE_ID).setPower(true))
-      .rejects.toThrow(/options.readOnly/)
+      .rejects.toThrow(/readOnly/)
   })
 
   it('refuses a power-off by default, because it stops the heating too', async () => {
     const built = build()
     await expect(built.platform.control(DEVICE_ID).setPower(false))
-      .rejects.toThrow(/switching the appliance off from HomeKit is disabled/)
+      .rejects.toThrow(/power-off disabled/)
     expect(built.session().publishControl).not.toHaveBeenCalled()
   })
 
@@ -475,7 +518,7 @@ describe('the rules on writes', () => {
     const built = build()
     await built.api.shutdown()
     await expect(built.platform.control(DEVICE_ID).setPower(true))
-      .rejects.toThrow(/session is not running/)
+      .rejects.toThrow(/session not running/)
   })
 })
 
@@ -483,7 +526,7 @@ describe('a cloud outage', () => {
   it('warns once for the account, not once for every accessory', () => {
     const built = build()
     built.session().emitUnreachable(new Error('socket hang up'))
-    const warned = built.log.calls.filter((line) => line.includes('NaviLink is not answering'))
+    const warned = built.log.calls.filter((line) => line.includes('not answering:'))
     // One connection serves every accessory, so an outage is one event. Eight
     // identical lines would say nothing eight times.
     expect(warned).toHaveLength(1)
@@ -494,7 +537,7 @@ describe('a cloud outage', () => {
     built.session().emitUnreachable(new Error('socket hang up'))
     built.session().emitUnreachable(new Error('socket hang up'))
     built.session().emitUnreachable(new Error('socket hang up'))
-    const warned = built.log.calls.filter((line) => line.includes('NaviLink is not answering'))
+    const warned = built.log.calls.filter((line) => line.includes('not answering:'))
     expect(warned).toHaveLength(1)
   })
 
@@ -502,20 +545,29 @@ describe('a cloud outage', () => {
     const built = build()
     built.session().emitUnreachable(new Error('socket hang up'))
     built.session().emitObservation(DEVICE_ID, observation())
-    expect(built.log.calls).toContain('info NaviLink is answering again')
+    expect(built.log.calls).toContain('info mqtt recovered')
   })
 
   it('stays quiet about recovery when nothing was wrong', () => {
     const built = build()
     built.session().emitObservation(DEVICE_ID, observation())
-    expect(built.log.calls.some((line) => line.includes('answering again'))).toBe(false)
+    expect(built.log.calls.some((line) => line.includes('mqtt recovered'))).toBe(false)
   })
 
   it('does not name the gateway MAC in the outage line', () => {
     const built = build()
     built.session().emitUnreachable(new Error(`connect ECONNREFUSED to ${MAC}`))
-    const warned = built.log.calls.find((line) => line.includes('NaviLink is not answering'))
+    const warned = built.log.calls.find((line) => line.includes('not answering:'))
     expect(warned).toBeDefined()
+  })
+
+  it('logs a broker close as itself, not as not answering', () => {
+    const built = build()
+    built.session().emitUnreachable(
+      new Error('NaviLink broker closed the connection (code 1006)'),
+    )
+    expect(built.log.calls).toContain('warn NaviLink broker closed the connection (code 1006)')
+    expect(built.log.calls.some((line) => line.includes('not answering'))).toBe(false)
   })
 })
 

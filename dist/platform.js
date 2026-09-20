@@ -33,6 +33,8 @@ const channel_1 = require("./api/channel");
 const identity_1 = require("./api/identity");
 const protocol_1 = require("./api/protocol");
 const devices_1 = require("./devices");
+const collector_1 = require("./diagnostics/collector");
+const format_1 = require("./diagnostics/format");
 const session_1 = require("./session");
 const settings_1 = require("./settings");
 const types_1 = require("./types");
@@ -54,8 +56,15 @@ class NaviLinkPlatform {
         statusIntervalSec: settings_1.DEFAULT_STATUS_INTERVAL_SEC,
         allowPowerOff: false,
         readOnly: false,
+        diagnosticsInterval: 0,
+        structuredLogs: false,
+        accessoryPrefix: '',
     };
     session;
+    platformConfig;
+    diagnostics;
+    diagnosticsTimer;
+    lastDiagnosticsHealth = null;
     /** True when configuration was unusable and nothing should be attempted. */
     disabled = false;
     /** True between the cloud going quiet and the next observation. */
@@ -67,6 +76,11 @@ class NaviLinkPlatform {
         this.Service = api.hap.Service;
         this.Characteristic = api.hap.Characteristic;
         this.pluginVersion = (0, settings_1.readPluginVersion)(log);
+        this.platformConfig = config;
+        this.diagnostics = new collector_1.DiagnosticsCollector({
+            pluginVersion: this.pluginVersion,
+            config: this.platformConfig,
+        });
         const result = (0, utils_1.validateConfig)(config);
         for (const warning of result.warnings) {
             this.log.warn(warning);
@@ -77,8 +91,7 @@ class NaviLinkPlatform {
             for (const error of result.errors) {
                 this.log.error(error);
             }
-            this.log.error('the NaviLink platform is disabled. Cached accessories are left registered and will '
-                + 'show as No Response, so your rooms and automations are preserved.');
+            this.log.error('platform disabled; cached accessories kept');
             // Still registered so Homebridge does not complain about orphans, and so
             // fixing the configuration restores them rather than recreating them.
             api.on('didFinishLaunching', () => this.keepRestoredRegistered());
@@ -106,7 +119,7 @@ class NaviLinkPlatform {
     // --- Lifecycle --------------------------------------------------------------
     start(account, devices) {
         const warnings = [];
-        const accessories = (0, utils_1.resolveAccessories)(devices, warnings);
+        const accessories = (0, utils_1.resolveAccessories)(devices, warnings, this.options.accessoryPrefix);
         for (const warning of warnings) {
             this.log.warn(warning);
         }
@@ -116,6 +129,7 @@ class NaviLinkPlatform {
             account,
             devices,
             statusIntervalSec: this.options.statusIntervalSec,
+            metrics: this.diagnostics,
         });
         session.onObservation((deviceId, observation, reason) => {
             this.distribute(deviceId, observation, reason);
@@ -124,9 +138,11 @@ class NaviLinkPlatform {
         session.onStale((deviceId) => this.markDeviceUnreachable(deviceId));
         this.session = session;
         session.start();
-        this.log.info(`NaviLink is watching ${devices.length} appliance(s) with ${accessories.length} accessory(ies)`);
+        this.startDiagnostics();
+        this.log.info(`${devices.length} appliance(s), ${accessories.length} accessory(ies)`);
     }
     async stop() {
+        this.stopDiagnostics();
         for (const handler of this.handlers.values()) {
             handler.stop();
         }
@@ -142,8 +158,7 @@ class NaviLinkPlatform {
         for (const accessory of this.restored.values()) {
             this.reviveAsUnavailable(accessory);
         }
-        this.log.warn(`${this.restored.size} cached accessory(ies) are registered but inactive until the `
-            + 'configuration is fixed');
+        this.log.warn(`${this.restored.size} cached accessory(ies) inactive (config invalid)`);
     }
     /**
      * Bind GET handlers on a restored tile so HomeKit shows No Response.
@@ -188,7 +203,7 @@ class NaviLinkPlatform {
             .map(([, accessory]) => accessory);
         if (stale.length > 0) {
             for (const accessory of stale) {
-                this.log.info(`removing ${(0, utils_1.forLog)(accessory.displayName)}, no longer in the configuration`);
+                this.log.info(`removing ${(0, utils_1.forLog)(accessory.displayName)}`);
                 this.restored.delete(accessory.UUID);
             }
             this.api.unregisterPlatformAccessories(settings_1.PLUGIN_NAME, settings_1.PLATFORM_NAME, stale);
@@ -215,7 +230,7 @@ class NaviLinkPlatform {
         if (!(0, identity_1.hasAccessoryIdentity)(context, resolved)) {
             // Cannot happen: the context was just written from `resolved`. Checked
             // anyway because getting it wrong silently re-keys somebody's tile.
-            this.log.warn(`${(0, utils_1.forLog)(resolved.name)}: accessory identity did not bind; skipping it`);
+            this.log.warn(`${(0, utils_1.forLog)(resolved.name)}: identity bind failed; skipped`);
             return;
         }
         if (accessory.displayName !== resolved.name) {
@@ -253,7 +268,7 @@ class NaviLinkPlatform {
             case 'fault':
                 return new devices_1.FaultAccessory(init);
             default:
-                this.log.warn(`${(0, utils_1.forLog)(init.displayName)}: unknown accessory kind; skipping it`);
+                this.log.warn(`${(0, utils_1.forLog)(init.displayName)}: unknown kind; skipped`);
                 return undefined;
         }
     }
@@ -302,10 +317,10 @@ class NaviLinkPlatform {
         this.cloudOffline = true;
         if (isNew || now - this.lastOutageWarnAt > settings_1.UNREACHABLE_REWARN_MS) {
             this.lastOutageWarnAt = now;
-            this.log.warn(`NaviLink is not answering: ${(0, utils_1.describeError)(error)}`);
+            this.log.warn(describeOutage(error));
         }
         else {
-            this.log.debug(`NaviLink is still not answering: ${(0, utils_1.describeError)(error)}`);
+            this.log.debug(describeOutage(error, { repeating: true }));
         }
         for (const handler of this.handlers.values()) {
             handler.noteUnreachable(error);
@@ -332,7 +347,7 @@ class NaviLinkPlatform {
         }
         this.cloudOffline = false;
         this.lastOutageWarnAt = 0;
-        this.log.info('NaviLink is answering again');
+        this.log.info('mqtt recovered');
     }
     // --- AccessoryHost ----------------------------------------------------------
     deviceFor(deviceId) {
@@ -354,11 +369,11 @@ class NaviLinkPlatform {
     control(deviceId) {
         const send = (spec) => {
             if (this.options.readOnly) {
-                return Promise.reject(new utils_1.ControlRejectedError(`options.readOnly is on in the plugin settings, so ${spec.what} was not sent`));
+                return Promise.reject(new utils_1.ControlRejectedError(`readOnly; ${spec.what} not sent`));
             }
             const session = this.session;
             if (session === undefined) {
-                return Promise.reject(new utils_1.ControlRejectedError('the NaviLink session is not running'));
+                return Promise.reject(new utils_1.ControlRejectedError('session not running'));
             }
             return session.publishControl(deviceId, spec);
         };
@@ -372,16 +387,14 @@ class NaviLinkPlatform {
         const requireScale = () => {
             const observation = this.observationFor(deviceId);
             if (observation === undefined) {
-                throw new utils_1.ControlRejectedError('the appliance has not reported its temperature scale yet');
+                throw new utils_1.ControlRejectedError('scale unknown');
             }
             return observation.scale;
         };
         return {
             setPower: async (on) => {
                 if (!on && !this.options.allowPowerOff) {
-                    throw new utils_1.ControlRejectedError('switching the appliance off from HomeKit is disabled, because it stops central '
-                        + 'heating as well as hot water. Turn on "Allow HomeKit to switch the appliance '
-                        + 'off" in the plugin settings if that is what you want.');
+                    throw new utils_1.ControlRejectedError('power-off disabled (allowPowerOff is off)');
                 }
                 await send({
                     command: protocol_1.Command.POWER,
@@ -421,5 +434,102 @@ class NaviLinkPlatform {
             },
         };
     }
+    diagnosticsIntervalMs() {
+        const seconds = this.options.diagnosticsInterval;
+        return seconds > 0 ? seconds * 1_000 : 0;
+    }
+    startDiagnostics() {
+        const interval = this.diagnosticsIntervalMs();
+        if (interval <= 0 || this.diagnosticsTimer !== undefined) {
+            return;
+        }
+        try {
+            this.emitDiagnostic('info', this.diagnostics.snapshot('diagnostics.start', this.buildDiagnosticsReaders()));
+        }
+        catch (error) {
+            this.log.debug(`Failed to emit diagnostics start snapshot: ${(0, utils_1.describeError)(error)}`);
+        }
+        this.diagnosticsTimer = setInterval(() => this.diagnosticsHeartbeat(), interval);
+        this.diagnosticsTimer.unref?.();
+    }
+    stopDiagnostics() {
+        if (this.diagnosticsTimer === undefined) {
+            return;
+        }
+        try {
+            this.emitDiagnostic('info', this.diagnostics.snapshot('diagnostics.stop', this.buildDiagnosticsReaders()));
+        }
+        catch (error) {
+            this.log.debug(`Failed to emit diagnostics stop snapshot: ${(0, utils_1.describeError)(error)}`);
+        }
+        clearInterval(this.diagnosticsTimer);
+        this.diagnosticsTimer = undefined;
+    }
+    diagnosticsHeartbeat() {
+        try {
+            const report = this.diagnostics.buildHeartbeat(this.buildDiagnosticsReaders());
+            this.emitDiagnostic('info', report);
+            const health = report.lifecycle.health;
+            if (this.lastDiagnosticsHealth !== null && health !== this.lastDiagnosticsHealth) {
+                const isDegraded = health === 'degraded';
+                this.emitDiagnostic(isDegraded ? 'warn' : 'info', {
+                    ...report,
+                    msg: isDegraded ? 'health.degraded' : 'health.recovered',
+                }, { concise: true });
+            }
+            this.lastDiagnosticsHealth = health;
+        }
+        catch (error) {
+            this.log.debug(`Diagnostics heartbeat failed: ${(0, utils_1.describeError)(error)}`);
+        }
+    }
+    buildDiagnosticsReaders() {
+        const health = this.session?.health();
+        const now = Date.now();
+        return {
+            devices: () => ({
+                total: this.devices.size,
+                online: health?.onlineDeviceIds.length ?? 0,
+            }),
+            mqttState: () => health?.mqttState ?? 'stopped',
+            lastMqttEventAgeSec: () => {
+                if (health?.lastMqttEventAt === null || health?.lastMqttEventAt === undefined) {
+                    return null;
+                }
+                return Math.round((now - health.lastMqttEventAt) / 1_000);
+            },
+            tokenExpiresInSec: () => {
+                if (health?.expiresAt === null || health?.expiresAt === undefined) {
+                    return null;
+                }
+                return Math.round((health.expiresAt - now) / 1_000);
+            },
+            tokenLastRefreshAt: () => health?.lastRefreshAt ?? null,
+            pollingCadenceSec: () => this.options.statusIntervalSec,
+        };
+    }
+    emitDiagnostic(level, report, options = {}) {
+        this.log[level](options.concise === true
+            ? (0, format_1.formatHealthTransitionLine)(report)
+            : (0, format_1.formatDiagnosticLine)(report));
+        if (this.options.structuredLogs) {
+            this.log[level](JSON.stringify(report));
+        }
+    }
 }
 exports.NaviLinkPlatform = NaviLinkPlatform;
+/**
+ * One outage line for the whole account.
+ *
+ * A broker close already names NaviLink, so it is logged as-is. Anything else
+ * is prefixed so a generic `socket hang up` still names the outage.
+ */
+function describeOutage(error, options = {}) {
+    const detail = (0, utils_1.describeError)(error);
+    if (detail.startsWith('NaviLink ')) {
+        return detail;
+    }
+    return options.repeating === true
+        ? `not answering (repeat): ${detail}`
+        : `not answering: ${detail}`;
+}

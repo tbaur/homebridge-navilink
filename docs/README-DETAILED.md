@@ -27,6 +27,8 @@ HomeKit is good at noticing. The NaviLink app is not. A contact sensor that open
 
 ## Accessories in detail
 
+Each tile is named from the appliance (`Boiler Hot Water`) unless you set `options.accessoryPrefix`. Then every tile uses that stem instead (`Zone One Hot Water`). Two appliances on one prefix keep the appliance name in the tile so Siri can tell them apart.
+
 ### Hot water thermostat (`dhw`)
 
 A heat-only HomeKit thermostat.
@@ -41,33 +43,33 @@ Dragging the slider sends one command. Writes are coalesced over a short window.
 
 ### Heating thermostat (`heating`)
 
-A heat-only HomeKit thermostat for the **space-heating flow temperature**.
+A heat-only HomeKit thermostat for the **space-heating flow temperature**. This is the boiler's water temperature, not a room thermostat.
 
-The name invites a misunderstanding: it is not a room thermostat. It sets how hot the water going to your radiators or underfloor loop is. Your existing room thermostat still decides *when* heat is called for. Raising this makes the house warm up faster and costs more. Lowering it is usually the efficiency win people are after.
+It sets how hot the water going to your radiators or underfloor loop is. Your existing room thermostat still decides *when* heat is called for. Raising this makes the house warm up faster and costs more. Lowering it is usually the efficiency win people are after.
 
 - **Target temperature** is the flow setpoint, clamped to `setupHeatTempMin` and `setupHeatTempMax`
 - **Current temperature** is the supply temperature
 - **Off** disables the space-heating loop, which is a real thing the appliance supports and is not the same as switching it off
 
-Off by default in configuration. An appliance with no heating loop disables this accessory on its first status frame and says so once in the log.
+Off by default in configuration. An appliance with no heating loop disables this accessory on its first status frame and logs `no heating loop`.
 
 ### Power switch (`power`)
 
 The appliance's own power state.
 
-Switching it **on** works. Switching it **off** is refused unless `options.allowPowerOff` is on, and the refusal is explained in the log the first time. The guard exists because "turn off the water heater", said to Siri or swept up by a scene that turns everything off, would stop central heating in a house that may be empty and freezing.
+Switching it **on** works. Switching it **off** is refused unless `options.allowPowerOff` is on. The first refusal logs `power-off disabled (allowPowerOff is off)`. The guard exists because "turn off the water heater", said to Siri or swept up by a scene that turns everything off, would stop central heating in a house that may be empty and freezing.
 
 ### Recirculation switch (`recirculation`)
 
 Starts the on-demand hot water recirculation pump, so hot water reaches a distant tap without running it first. The appliance runs the pump for a fixed period and then stops; the tile turns itself off when that happens.
 
-The settings page offers this only where the appliance reports a pump (`onDemandUse` or `recirculationUse`). If you configure it by hand on an appliance without one, it disables itself and says so.
+The settings page offers this only where the appliance reports a pump (`onDemandUse` or `recirculationUse`). If you configure it by hand on an appliance without one, it disables itself and logs `no recirculation pump`.
 
 ### Fault sensor (`fault`)
 
 A ContactSensor that reads **open** when the appliance reports a non-zero error code, and closed otherwise. Contact sensors are the right shape for this because the Home app will notify on them without any setup.
 
-The code and sub-code go to the log once per change, both when a fault appears and when it clears. Look the number up in your installation manual; naming them in the plugin is on the [roadmap](#roadmap).
+The code and sub-code go to the log once per change (`error 12.3`, then `fault cleared`). Look the number up in your installation manual; naming them in the plugin is on the [roadmap](#roadmap).
 
 ### Temperature sensors (`temperatureSensors`)
 
@@ -80,27 +82,31 @@ One tick, four sensors:
 | Heating Flow | `avgSupplyTemp` |
 | Heating Return | `avgReturnTemp` |
 
-Each one disables itself and reports No Response if the appliance does not report it. The flow-and-return pair is genuinely useful: the difference between them is how much heat the system is actually delivering.
+Each one disables itself and reports No Response if the appliance does not report it (`no outlet temp`, `no inlet temp`, `no flow temp`, `no return temp`). The flow-and-return pair is genuinely useful: the difference between them is how much heat the system is actually delivering.
 
 ### Outdoor sensor (`outdoorSensor`)
 
 The outdoor probe, on an installation with one fitted for weather compensation. Most do not have one, which is why this is separate from the four above and off by default.
 
-An appliance with no probe reports `0`. The plugin treats that as absent, not as 0 °F. The heuristic is wrong for an installation that really is at 0 °F. The trade is deliberate: a missing sensor is common, an exact zero is rare, and a permanent hard freeze in the Home app is worse than a missing tile.
+An appliance with no probe reports `0`. The plugin treats that as absent, not as 0 °F, and logs `no outdoor sensor`. The heuristic is wrong for an installation that really is at 0 °F. The trade is deliberate: a missing sensor is common, an exact zero is rare, and a permanent hard freeze in the Home app is worse than a missing tile.
 
 ## Reliability in detail
 
 **Push, not polling.** The plugin subscribes to the gateway's own topics, not only to answers addressed to itself. A setpoint changed in the NaviLink app or at the wall controller therefore reaches HomeKit in about a second. The poll interval is a backstop for a push that was missed, not the normal path.
 
-**A rejected password is fatal, once.** NaviLink answers a wrong password with HTTP 200 and the error in the body. A plugin that checks the status code treats that as transient and retries every few seconds until the account locks. This one decides on whether a token came back, stops for good on a rejected credential, and says so with an instruction. Any error it does not recognise stays retryable.
+**A rejected password is fatal, once.** NaviLink answers a wrong password with HTTP 200 and the error in the body. A plugin that checks the status code treats that as transient and retries every few seconds until the account locks. This one decides on whether a token came back, stops for good on a rejected credential, and logs `NaviLink rejected the email address or password; sign-in stopped`. Any error it does not recognise stays retryable.
 
-**Credentials are renewed on a clock.** The AWS credentials behind the MQTT connection are temporary and there is no working refresh endpoint, so the plugin signs in again from the top a few minutes before they expire. A brief reconnect at a time we choose is better than an expiry we do not control at three in the morning.
+**Credentials are renewed on a clock.** The AWS credentials behind the MQTT connection are temporary and there is no working refresh endpoint, so the plugin signs in again from the top a few minutes before they expire. That close is expected: the tiles stay current and the log stays at debug. A brief reconnect at a time we choose is better than an expiry we do not control at three in the morning.
 
 **A connected socket is not a live appliance.** The broker will hold a connection open for a gateway that has gone offline. Observations carry the time they were taken. One older than several poll intervals stops being reported as current: the tiles go to No Response instead of showing yesterday's setpoint.
 
-**Control is rate-limited, and the cloud's own limit is honoured.** Commands to one gateway are spaced out. When the cloud refuses one for arriving too soon, the plugin pauses for 30 seconds. It does not keep sending to a channel that is already refusing.
+**State is No Response** until the appliance has actually been read, and not a value it cannot confirm.
 
-**Backoff has jitter.** Reconnects use exponential backoff with full jitter to a capped ceiling, so a regional outage does not produce a synchronised stampede when it ends.
+**Never loses your rooms.** A broken config disables the platform without unregistering anything (`platform disabled; cached accessories kept`).
+
+**Control is rate-limited, and the cloud's own limit is honoured.** Commands to one gateway are spaced out. When the cloud refuses one for arriving too soon, the log is `rate limited` and the plugin pauses for 30 seconds. It does not keep sending to a channel that is already refusing.
+
+**Backoff has jitter.** Reconnects use exponential backoff with full jitter to a capped ceiling, so a regional outage does not produce a synchronised stampede when it ends. A real drop logs the close, then `reconnect in Ns`, then `mqtt recovered` when the session is up again.
 
 ## Full configuration reference
 
@@ -115,6 +121,9 @@ An appliance with no probe reports `0`. The plugin treats that as absent, not as
 | `options.statusIntervalSec` | integer | `120` | Backstop refresh, 30–3600. Clamped with a warning if out of range |
 | `options.readOnly` | boolean | `false` | Report everything, send nothing |
 | `options.allowPowerOff` | boolean | `false` | Let HomeKit switch the appliance off |
+| `options.diagnosticsInterval` | integer | `0` | Health heartbeat in the log, in seconds. `0` is off; otherwise `30`–`3600` |
+| `options.structuredLogs` | boolean | `false` | With diagnostics, also emit each report as JSON |
+| `options.accessoryPrefix` | string | *(blank)* | HomeKit names become `Prefix Hot Water`, `Prefix Heating`, and so on. Blank uses each appliance's name. Two appliances with the same prefix keep the appliance name in the tile so Siri can tell them apart |
 
 A trailing space on the password is trimmed. A password manager will happily paste one. The trim is mentioned once in the log. Without that, the cloud rejects a password that looks right and the failure is unexplainable.
 
@@ -123,7 +132,7 @@ A trailing space on the password is trimmed. A password manager will happily pas
 | Key | Type | Default | Description |
 | --- | --- | --- | --- |
 | `id` | string | — | `{12 hex}:{channel}`, written by the settings page |
-| `name` | string | — | The appliance's name; accessories are named from it |
+| `name` | string | — | The appliance's name. Accessories are named from it unless `options.accessoryPrefix` is set |
 | `channel` | integer | `1` | Channel on the gateway. A cascade uses one per appliance |
 | `dhw` | boolean | `true` | Hot water thermostat |
 | `heating` | boolean | `false` | Space-heating thermostat |
@@ -169,13 +178,13 @@ Hot water is the only one on by default. Everything else is opt-in, including sp
 }
 ```
 
-That produces eight accessories: two thermostats, a power switch, a fault sensor and four temperature sensors.
+That produces eight accessories: two thermostats, a power switch, a fault sensor and four temperature sensors. Leave `options.accessoryPrefix` unset unless you want one stem on every tile. Leave `options.diagnosticsInterval` at `0` unless you want a periodic `Health:` line.
 
 ## Accessory identity
 
 An accessory's identity is `{gateway MAC}:{channel}:{kind}`, hashed into its HomeKit UUID.
 
-Nothing about your account, your network or your naming is in it. That is the point: renaming an appliance, moving house, changing router or re-pairing the gateway all leave your tiles attached to their rooms, scenes and automations.
+Nothing about your account, your network or your naming is in it. That is the point: renaming an appliance, changing `options.accessoryPrefix`, moving house, changing router or re-pairing the gateway all leave your tiles attached to their rooms, scenes and automations.
 
 **Changing `id` by hand detaches everything.** HomeKit treats the result as new hardware, in no room, in no automation. The settings page writes `id` for you; there is no reason to edit it.
 
@@ -188,16 +197,17 @@ Startup, in order:
 ```
 adding Boiler Hot Water
 adding Boiler Heating
-signed in to NaviLink as s…e@example.com
-gateway …E5F6 is on firmware 4352
-NaviLink live connection is up
-…E5F6 channel 1 family=NCB
-NaviLink is watching 1 appliance(s) with 8 accessory(ies)
+Boiler firmware 4352
+mqtt up
+Boiler channel 1 family=NCB
+1 appliance(s), 8 accessory(ies)
 ```
+
+`family=` is once, when the gateway first describes the channel. A later channelinfo (poll, reconnect, credential refresh) stays at debug.
 
 `adding` and `removing` name each accessory, the same way the other plugins in this family do. A rename is a line of its own (`Boiler Hot Water is now named Downstairs Hot Water`). That keeps the tile in its room; a remove-and-add would not.
 
-The email and MAC are masked. They identify you and your hardware, and a Homebridge log gets pasted into issues.
+The account address is debug only, and masked. Appliance lines use the name you configured. A gateway with no name is logged as `gateway …E5F6` (last four of the MAC), only as a fallback.
 
 A HomeKit write that was accepted:
 
@@ -210,17 +220,39 @@ Boiler Hot Water: SET 120 °F
 A write that was declined by a rule rather than by the appliance:
 
 ```
-Boiler Hot Water: ignoring a request to change the setpoint; options.readOnly is on in the plugin settings
+Boiler Hot Water: readOnly; write ignored
 ```
 
 An outage, and its recovery. Every outage warns on the way in so that it gets a matching line on the way out; without one, a log shows the cloud failing and never recovering:
 
 ```
-NaviLink is not answering: the connection was closed by the broker
-NaviLink is answering again
+NaviLink broker closed the connection (code 1006)
+reconnect in 2s
+mqtt up
+mqtt recovered
 ```
 
 A continuing outage repeats at most hourly, at debug in between.
+
+A credential refresh is not an outage. The plugin closes the socket itself a few minutes before the AWS credentials expire, signs in again, and the tiles stay current. That is debug only. `family=`, firmware and `mqtt up` do not repeat at info.
+
+### Diagnostics (optional)
+
+Set `options.diagnosticsInterval` to a value between `30` and `3600` seconds to turn on an opt-in health heartbeat. It is **off by default** (`0`) and is **logs only — nothing is exposed in HomeKit**. It reads in-memory state; it never makes a network call.
+
+It pairs with `options.structuredLogs: true`, which adds a JSON line next to the human one.
+
+```
+Health: healthy | devices 1/1 | mqtt live | api p50 80ms p95 120ms (req 3, err 0)
+```
+
+| `msg` | Level | When |
+| --- | --- | --- |
+| `diagnostics.start` / `diagnostics.stop` | info | Boot and shutdown, with a redacted config echo |
+| `health` | info | Every `diagnosticsInterval` seconds |
+| `health.degraded` / `health.recovered` | warn / info | When the rollup flips |
+
+Health is `degraded` when the MQTT session has been down for more than a minute, the account was rejected, or recent REST calls are failing at a high rate. Counters on a `health` line are per-interval deltas; the start/stop snapshots are session totals. Credentials, appliance names and the accessory prefix are never in the JSON (the prefix is a boolean: set or not).
 
 ## Apple Shortcuts
 
@@ -256,13 +288,13 @@ The plugin has stopped trying on purpose, so the account is not locked out. Sign
 The account does not exist. Check for a typo, and note that the plugin trims surrounding whitespace but cannot fix a wrong address.
 
 **3. Everything shows No Response and stays that way.**
-Look for `the NaviLink platform is disabled` in the log. That means the configuration could not be read; the error above it says which part.
+Look for `platform disabled` in the log. That means the configuration could not be read; the error above it says which part.
 
 **4. Accessories exist but never get a reading.**
 Check the gateway shows as connected in the NaviLink app. The plugin cannot see anything the app cannot.
 
 **5. The heating thermostat reports no loop.**
-Your appliance reports `heatControl` off, or an empty setpoint range. That is a water heater, or a combi whose heating side was never commissioned. Turn the accessory off in the settings.
+Look for `no heating loop` in the log. Your appliance reports `heatControl` off, or an empty setpoint range. That is a water heater, or a combi whose heating side was never commissioned. Turn the accessory off in the settings.
 
 **6. The heating thermostat accepts a change and nothing happens.**
 Check the gateway still shows as connected in the NaviLink app, and look at the log around the write. Please open an issue with the surrounding lines if it stays stuck.
@@ -270,14 +302,14 @@ Check the gateway still shows as connected in the NaviLink app, and look at the 
 **7. The hot water thermostat will not turn the appliance off.**
 By default. On a combi that stops central heating too. Turn on `options.allowPowerOff` if that is genuinely what you want: Off on the hot-water tile then powers the whole appliance down, and Heat while it is off turns it back on.
 
-**8. "The appliance refused a command for arriving too soon."**
+**8. `rate limited`**
 The cloud rate-limits control, usually after a scene touched several tiles at once. The plugin pauses for 30 seconds; press again after that.
 
 **9. A temperature sensor shows No Response.**
-The appliance is not reporting that probe. The log says which one and why on the first observation.
+The appliance is not reporting that probe. The first observation logs which one (`no outlet temp`, `no inlet temp`, `no flow temp`, `no return temp`, `no outdoor sensor`).
 
 **10. The outdoor sensor never works.**
-Most installations have no outdoor probe. An appliance without one reports `0`, which is treated as absent.
+Most installations have no outdoor probe. An appliance without one reports `0`, which is treated as absent (`no outdoor sensor`).
 
 **11. Setpoints snap to a different value.**
 Expected. The appliance clamps to the range your installer set, and a Fahrenheit appliance only accepts whole degrees, so HomeKit's Celsius value lands on the nearest one. The plugin adopts what the appliance reports, not what was asked for.
@@ -296,12 +328,12 @@ See [SECURITY.md](../SECURITY.md) for the detail, including what a raw capture c
 
 ## Quality
 
-- Strict TypeScript, `noUncheckedIndexedAccess`, type-aware lint, warnings are failures
-- A behavioural Jest suite against fixtures recorded from real hardware, gated at 80% of statements
-- A fixture guard that fails the build if a MAC address, email or token that is not the documented example appears in `tests/fixtures/`
+- **Strict TypeScript,** with `noUncheckedIndexedAccess` and type-aware lint; warnings are failures
+- **Tested:** a behavioural Jest suite against fixtures recorded from real hardware, gated at 80% of statements, with a guard that fails the build if a MAC address, email or token that is not the documented example appears in `tests/fixtures/`
 - A CI step that rejects credential-shaped strings in the published docs, fixtures, schema and issue templates. Unit tests that hold fake JWTs are outside that scan on purpose
 - `npm audit` on the runtime tree on every PR; OSV-Scanner on the full tree, weekly and on every PR
-- One runtime dependency: Homebridge's own UI helper. The MQTT client is in this repository
+- **No analytics:** nothing is sent anywhere except Navien's own service
+- **One runtime dependency:** Homebridge's own UI helper. The MQTT client is a small in-repo codec, not a `mqtt.js` dependency tree
 
 ## More
 

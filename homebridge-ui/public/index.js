@@ -243,6 +243,16 @@
     select.value = String(interval)
     byId('read-only').checked = platformConfig.options.readOnly === true
     byId('allow-power-off').checked = platformConfig.options.allowPowerOff === true
+    byId('accessory-prefix').value = typeof platformConfig.options.accessoryPrefix === 'string'
+      ? platformConfig.options.accessoryPrefix
+      : ''
+    const diagnostics = Number(platformConfig.options.diagnosticsInterval) || 0
+    const diagnosticsSelect = byId('diagnostics-interval')
+    if (!Array.from(diagnosticsSelect.options).some((option) => Number(option.value) === diagnostics)) {
+      diagnosticsSelect.append(el('option', { value: String(diagnostics) }, `Every ${diagnostics} seconds`))
+    }
+    diagnosticsSelect.value = String(diagnostics)
+    byId('structured-logs').checked = platformConfig.options.structuredLogs === true
   }
 
   /**
@@ -262,6 +272,19 @@
     }
     setFlag('readOnly', byId('read-only').checked === true)
     setFlag('allowPowerOff', byId('allow-power-off').checked === true)
+    const prefix = byId('accessory-prefix').value.trim()
+    if (prefix.length === 0) {
+      delete platformConfig.options.accessoryPrefix
+    } else {
+      platformConfig.options.accessoryPrefix = prefix
+    }
+    const diagnostics = Number(byId('diagnostics-interval').value) || 0
+    if (diagnostics === 0) {
+      delete platformConfig.options.diagnosticsInterval
+    } else {
+      platformConfig.options.diagnosticsInterval = diagnostics
+    }
+    setFlag('structuredLogs', byId('structured-logs').checked === true)
 
     const email = byId('email').value.trim()
     const password = byId('password').value.trim()
@@ -475,8 +498,11 @@
   byId('email').addEventListener('input', () => changed())
   byId('password').addEventListener('input', () => changed())
   byId('interval').addEventListener('change', () => changed())
+  byId('accessory-prefix').addEventListener('input', () => changed())
   byId('read-only').addEventListener('change', () => changed())
   byId('allow-power-off').addEventListener('change', () => changed())
+  byId('diagnostics-interval').addEventListener('change', () => changed())
+  byId('structured-logs').addEventListener('change', () => changed())
   byId('toggle-json').addEventListener('click', () => {
     schemaFormVisible = !schemaFormVisible
     if (schemaFormVisible) {

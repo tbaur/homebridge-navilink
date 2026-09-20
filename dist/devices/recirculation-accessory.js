@@ -61,16 +61,15 @@ class RecirculationAccessory extends base_accessory_1.BaseAccessory {
         const wantOn = value === true;
         const equipped = this.equippedState();
         if (equipped === undefined) {
-            this.host.log.debug(`${(0, utils_1.forLog)(this.displayName)}: recirculation is unknown until the appliance reports it`);
+            this.host.log.debug(`${(0, utils_1.forLog)(this.displayName)}: recirculation unknown`);
             throw this.communicationFailure();
         }
-        if (this.declineIfReadOnly('change recirculation')) {
+        if (this.declineIfReadOnly()) {
             this.restore();
             return;
         }
         if (equipped === false) {
-            this.host.log.info(`${(0, utils_1.forLog)(this.displayName)}: this appliance reports no recirculation pump; `
-                + 'nothing was sent');
+            this.host.log.info(`${(0, utils_1.forLog)(this.displayName)}: no recirculation pump`);
             this.service.updateCharacteristic(this.host.hap.Characteristic.On, false);
             return;
         }
@@ -81,7 +80,7 @@ class RecirculationAccessory extends base_accessory_1.BaseAccessory {
                 this.logAction(wantOn ? 'RECIRCULATE' : 'RECIRCULATE OFF');
             }
             catch (error) {
-                this.host.log.warn(`${(0, utils_1.forLog)(this.displayName)}: could not change recirculation: ${(0, utils_1.describeError)(error)}`);
+                this.host.log.warn(`${(0, utils_1.forLog)(this.displayName)}: recirculation failed: ${(0, utils_1.describeError)(error)}`);
                 this.restore();
             }
         });
@@ -114,9 +113,7 @@ class RecirculationAccessory extends base_accessory_1.BaseAccessory {
             return;
         }
         this.hasWarnedNotEquipped = true;
-        this.host.log.warn(`${(0, utils_1.forLog)(this.displayName)}: the appliance reports no recirculation pump `
-            + '(onDemandUse and recirculationUse are both off). Turn the recirculation accessory '
-            + 'off in the plugin settings, or enable the pump in the NaviLink app if one is fitted.');
+        this.host.log.warn(`${(0, utils_1.forLog)(this.displayName)}: no recirculation pump`);
     }
 }
 exports.RecirculationAccessory = RecirculationAccessory;

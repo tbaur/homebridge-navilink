@@ -98,6 +98,8 @@ export interface NaviLinkRestOptions {
   now?: () => number
   /** Cancels in-flight calls, so Homebridge shutdown need not wait out a deadline. */
   signal?: AbortSignal
+  /** One sample per REST attempt, for diagnostics. Never receives the body. */
+  metrics?: (sample: { durationMs: number; ok: boolean }) => void
 }
 
 /** Talks to the NaviLink REST service. */
@@ -110,11 +112,14 @@ export class NaviLinkRest {
 
   private readonly signal: AbortSignal | undefined
 
+  private readonly metrics: NaviLinkRestOptions['metrics']
+
   constructor(options: NaviLinkRestOptions) {
     this.log = options.log
     this.post = options.post ?? postJson
     this.now = options.now ?? Date.now
     this.signal = options.signal
+    this.metrics = options.metrics
   }
 
   /**
@@ -191,8 +196,7 @@ export class NaviLinkRest {
       }
     }
     this.log.warn(
-      `the account listed ${MAX_DEVICE_LIST_PAGES * DEVICE_LIST_PAGE_SIZE} gateways, `
-      + 'which is this plugin\'s cap; any further gateway is not shown',
+      `device list capped at ${MAX_DEVICE_LIST_PAGES * DEVICE_LIST_PAGE_SIZE}`,
     )
     return found
   }
@@ -258,7 +262,7 @@ export class NaviLinkRest {
       // Not fatal, and deliberately quiet: firmware is a nicety, and this
       // endpoint has been observed answering 403 on accounts where the device
       // list works perfectly well.
-      this.log.debug(`device/info answered HTTP ${response.status}; firmware will be unknown`)
+      this.log.debug(`device/info HTTP ${response.status}; firmware unknown`)
       return undefined
     }
     const body = this.readBody(response.body, 'device info')
@@ -274,15 +278,23 @@ export class NaviLinkRest {
     // The path, never the body: the body of the very first call is the
     // password.
     this.log.debug(`POST ${path}`)
-    return this.post(`${API_BASE}${path}`, body, {
-      connectTimeoutMs: CONNECT_TIMEOUT_MS,
-      totalTimeoutMs: REST_TIMEOUT_MS,
-      maxBytes: MAX_REST_BYTES,
-      // No `Bearer` prefix. The API wants the raw token, and sending a
-      // correctly-formed bearer header gets a 401.
-      ...(accessToken === undefined ? {} : { headers: { authorization: accessToken } }),
-      ...(this.signal === undefined ? {} : { signal: this.signal }),
-    })
+    const started = this.now()
+    try {
+      const response = await this.post(`${API_BASE}${path}`, body, {
+        connectTimeoutMs: CONNECT_TIMEOUT_MS,
+        totalTimeoutMs: REST_TIMEOUT_MS,
+        maxBytes: MAX_REST_BYTES,
+        // No `Bearer` prefix. The API wants the raw token, and sending a
+        // correctly-formed bearer header gets a 401.
+        ...(accessToken === undefined ? {} : { headers: { authorization: accessToken } }),
+        ...(this.signal === undefined ? {} : { signal: this.signal }),
+      })
+      this.metrics?.({ durationMs: this.now() - started, ok: true })
+      return response
+    } catch (error) {
+      this.metrics?.({ durationMs: this.now() - started, ok: false })
+      throw error
+    }
   }
 
   private readBody(text: string, what: string): Record<string, unknown> {
@@ -347,8 +359,7 @@ export class NaviLinkRest {
 
     if (candidates.length === 0) {
       this.log.debug(
-        'the cloud did not report a believable session lifetime; '
-        + `assuming ${Math.round(FALLBACK_SESSION_MS / 60_000)} minutes`,
+        `session lifetime missing; assuming ${Math.round(FALLBACK_SESSION_MS / 60_000)}m`,
       )
       return FALLBACK_SESSION_MS
     }
@@ -366,7 +377,7 @@ export class NaviLinkRest {
     const record = asRecord(asRecord(entry)?.deviceInfo) ?? asRecord(entry)
     const macAddress = asNonEmptyString(record?.macAddress)?.toLowerCase()
     if (record === undefined || macAddress === undefined) {
-      this.log.debug('skipping a device-list entry with no MAC address')
+      this.log.debug('skipping device-list entry: no MAC')
       return undefined
     }
     return {

@@ -25,6 +25,8 @@
  * behind the MQTT connection are temporary. Waiting for the connection to
  * fail would mean a window of silence in the middle of a winter night, so the
  * session re-establishes itself a few minutes before the deadline instead.
+ * That close is expected: it is not logged as an outage and the tiles stay
+ * current, the same way the sibling plugins reconnect after a token refresh.
  *
  * **A connected socket does not mean a live appliance.** The broker will
  * happily hold a connection open for a gateway that has gone offline. So
@@ -35,7 +37,7 @@
 import { MqttConnection, type MqttConnectionOptions } from './api/mqtt';
 import { type ControlInput, type OutboundFrame } from './api/protocol';
 import { NaviLinkRest } from './api/rest';
-import type { ChannelObservation, PluginLogger, RefreshReason, ResolvedDevice } from './types';
+import type { ChannelObservation, PluginLogger, RefreshReason, ResolvedDevice, SessionHealth, SessionMetrics } from './types';
 import { type ResolvedAccount } from './utils';
 /**
  * One control command, with enough about it to log and to gate.
@@ -69,6 +71,7 @@ export interface NaviLinkSessionOptions {
     createConnection?: (options: MqttConnectionOptions) => MqttConnection;
     now?: () => number;
     random?: () => number;
+    metrics?: SessionMetrics;
 }
 /** Owns the plugin's entire relationship with the NaviLink cloud. */
 export declare class NaviLinkSession {
@@ -97,6 +100,19 @@ export declare class NaviLinkSession {
     private pollInFlight;
     /** Aborts in-flight REST so shutdown does not wait out a 30s request deadline. */
     private readonly abort;
+    private expiresAt;
+    private lastRefreshAt;
+    private lastMqttEventAt;
+    /** Families already announced at info, so a later channelinfo is not a new event. */
+    private readonly announcedFamilies;
+    /** Firmware lines already announced at info, so a credential refresh is not a new event. */
+    private readonly announcedFirmware;
+    /** True after the first `mqtt up` line, so a refresh is not a boot. */
+    private liveAnnounced;
+    /** True after an unexpected drop, so the next connect is a recovery. */
+    private liveWasDown;
+    /** True when the current wait ended because this plugin closed the socket. */
+    private lastCloseWasExpected;
     constructor(options: NaviLinkSessionOptions);
     /** Register a handler for fresh state. */
     onObservation(listener: ObservationListener): void;
@@ -104,6 +120,8 @@ export declare class NaviLinkSession {
     onUnreachable(listener: UnreachableListener): void;
     /** Register a handler for one appliance going stale while the broker is up. */
     onStale(listener: StaleListener): void;
+    /** In-memory gauges for diagnostics. Never reads the network. */
+    health(): SessionHealth;
     /**
      * The current state of a device, or undefined when there is none to trust.
      *
@@ -160,6 +178,8 @@ export declare class NaviLinkSession {
     private readFirmware;
     /** The gateway firmware behind a device, when the cloud disclosed it. */
     firmwareFor(deviceId: string): string | undefined;
+    /** Appliance name from config, or a labelled masked gateway if there is none. */
+    private nameFor;
     /**
      * Open the MQTT connection, trying both Host header signatures.
      *
@@ -180,7 +200,7 @@ export declare class NaviLinkSession {
     get hasStoppedPermanently(): boolean;
     private requestChannelInfo;
     private requestStatus;
-    /** Ask every known channel for its state. */
+    /** Ask every known channel for its state. Returns how many requests failed. */
     private requestAllStatus;
     private handleMessage;
     /**
@@ -224,7 +244,12 @@ export declare class NaviLinkSession {
     private dropStaleObservations;
     /** Close the live socket without treating a leftover as the current one. */
     private dropConnection;
-    /** One line per channel so a bug report can say `family=` without a capture. */
+    /**
+     * One line per channel so a bug report can say `family=` without a capture.
+     *
+     * Channelinfo can arrive again on a poll, a reconnect, or a credential
+     * refresh. The first time is the useful one; repeats stay at debug.
+     */
     private logChannelFamilies;
     /** A configured id whose channel is missing stays No Response otherwise. */
     private warnMissingChannels;
@@ -237,6 +262,10 @@ export declare class NaviLinkSession {
      * is the only path known to produce a working set of AWS credentials, and a
      * brief reconnect on a timer we choose is better than an expiry we do not
      * control.
+     *
+     * The close is marked expected, so it is not logged as an outage and does
+     * not put the tiles into No Response. Sibling plugins do the same on a
+     * token-refresh reconnect.
      */
     private scheduleRefresh;
     private clearTimers;
