@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.1](https://github.com/tbaur/homebridge-navilink/compare/v1.0.0...v1.0.1) (2026-09-20)
+
+
+### Bug Fixes
+
+* keep the diagnostic heartbeat on the short mqtt token ([#16](https://github.com/tbaur/homebridge-navilink/issues/16)) ([5097514](https://github.com/tbaur/homebridge-navilink/commit/509751421e117fd785594cbf269996cdd1bad85d))
+
 ## [1.0.0](https://github.com/tbaur/homebridge-navilink/compare/v0.1.4...v1.0.0) (2026-09-20)
 
 
