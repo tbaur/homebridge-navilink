@@ -54,7 +54,18 @@ describe('diagnosticLabel', () => {
 describe('formatDiagnosticLine', () => {
   it('matches the sibling-plugin shape', () => {
     expect(formatDiagnosticLine(report())).toBe(
-      'Health: healthy | devices 1/1 | Publish-subscribe (mqtt) live | api p50 80ms p95 120ms (req 3, err 0)',
+      'Health: healthy | devices 1/1 | mqtt live | api p50 80ms p95 120ms (req 3, err 0)',
+    )
+  })
+
+  it('keeps the short mqtt token and a space before a zero p95', () => {
+    expect(formatDiagnosticLine(report({
+      msg: 'diagnostics.start',
+      devices: { total: 1, online: 0 },
+      transport: { mqttState: 'connecting' },
+      api: { p50Ms: 0, p95Ms: 0, requests: 0, errors: 0 },
+    }))).toBe(
+      'Diagnostics start: healthy | devices 0/1 | mqtt connecting | api p50 0ms p95 0ms (req 0, err 0)',
     )
   })
 
@@ -69,7 +80,7 @@ describe('formatDiagnosticLine', () => {
       transport: { mqttState: 'connecting' },
     }))
     expect(line).toContain('Health: degraded [mqttDown]')
-    expect(line).toContain('Publish-subscribe (mqtt) connecting')
+    expect(line).toContain('mqtt connecting')
   })
 })
 

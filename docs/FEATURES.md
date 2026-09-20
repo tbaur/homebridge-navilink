@@ -35,7 +35,7 @@ A checklist of what is built. The plugin aims to cover everything about a Navien
 - ✅ Read-only mode: every accessory reports state, and no control command is ever sent (`readOnly; write ignored`)
 - ✅ Power-off guard, on by default, because a combi's power state governs central heating as well as hot water (`power-off disabled (allowPowerOff is off)`)
 - ✅ Accessory name prefix (`options.accessoryPrefix`): one editable stem for every HomeKit tile, without changing accessory identity
-- ✅ Opt-in diagnostics (`options.diagnosticsInterval`, default 0 / off): a periodic heartbeat (`Health: healthy | devices n/n | Publish-subscribe (mqtt) live | api p50/p95 (req, err)`), with optional structured JSON (`options.structuredLogs`)
+- ✅ Opt-in diagnostics (`options.diagnosticsInterval`, default 0 / off): a periodic heartbeat (`Health: healthy | devices n/n | mqtt live | api p50/p95 (req, err)`), with optional structured JSON (`options.structuredLogs`)
 - ✅ Secrets redacted from every log line by shape, not by field name, so an unfamiliar response cannot leak a token
 - ✅ HomeKit serial numbers are opaque generated values, never the gateway MAC
 - ✅ Bounded I/O: separate connect and total timeouts, a capped response size, and a capped MQTT packet size
