@@ -62,7 +62,7 @@ Dependabot titles runtime bumps `fix:` and development bumps `chore:` (see `.git
 
 - **Publishing** uses npm Trusted Publishing (OIDC), so there is no `NPM_TOKEN`. The package is linked on npmjs.com to this repo's `release.yml`, under Settings → Trusted Publisher. This is not reconfigured per release.
 - **Actions may create pull requests** (Settings → Actions → General → Workflow permissions). Without it, release-please writes the branch but cannot open the PR.
-- **`main` is protected:** a PR is required (0 approvals), force-pushes and deletions are blocked, and no status check is a hard gate. Tests and OSV run on the PR, not again on merge. Release is the only workflow that starts on a push to `main`. The `publish` job re-runs build, lint and test before `npm publish`, so nothing ships untested.
+- **`main` is protected:** a PR is required (0 approvals), force-pushes and deletions are blocked, and no status check is a hard gate. Tests run on the PR. OSV-Scanner runs on the PR and on every push to `main`, so a fixed alert closes on merge. Release also starts on a push to `main`. The `publish` job re-runs build, lint and test before `npm publish`, so nothing ships untested.
 
 ## Notes
 

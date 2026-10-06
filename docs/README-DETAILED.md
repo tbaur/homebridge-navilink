@@ -353,7 +353,7 @@ See [SECURITY.md](../SECURITY.md) for the detail, including what a raw capture c
 - **Strict TypeScript,** with `noUncheckedIndexedAccess` and type-aware lint; warnings are failures
 - **Tested:** a behavioural Jest suite against fixtures recorded from real hardware, gated at 80% of statements, with a guard that fails the build if a MAC address, email or token that is not the documented example appears in `tests/fixtures/`
 - A CI step that rejects credential-shaped strings in the published docs, fixtures, schema and issue templates. Unit tests that hold fake JWTs are outside that scan on purpose
-- `npm audit` on the runtime tree on every PR; OSV-Scanner on the full tree, weekly and on every PR
+- `npm audit` on the runtime tree on every PR; OSV-Scanner on the full tree, on every PR, on every push to `main`, and weekly
 - **No analytics:** nothing is sent anywhere except Navien's own service
 - **One runtime dependency:** Homebridge's own UI helper. The MQTT client is a small in-repo codec, not a `mqtt.js` dependency tree
 
