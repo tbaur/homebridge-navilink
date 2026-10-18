@@ -336,8 +336,11 @@ export class NaviLinkPlatform implements DynamicPlatformPlugin, AccessoryHost {
       this.log.info(
         `${forLog(accessory.displayName)} is now named ${forLog(resolved.name)}`,
       )
+      // Assigning `displayName` only changes the wrapper. Homebridge publishes
+      // and restores the HAP accessory's name, so a cached tile keeps the old
+      // one until `updateDisplayName` writes both.
+      accessory.updateDisplayName(resolved.name)
     }
-    accessory.displayName = resolved.name
     const init: AccessoryInit = {
       host: this,
       accessory,

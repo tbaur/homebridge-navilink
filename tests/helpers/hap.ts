@@ -212,13 +212,27 @@ export function fakeHap(): HAP {
 /** A restored `PlatformAccessory`, with services that persist across handlers. */
 export class FakeAccessory {
   readonly services: FakeService[] = []
+  /**
+   * The name Homebridge persists and publishes. Assigning `displayName` does
+   * not touch it; only `updateDisplayName` does, matching Homebridge.
+   */
+  hapDisplayName: string
+  readonly displayNameUpdates: string[] = []
 
   /** Homebridge's own signature, so this can stand in for `platformAccessory`. */
   constructor(
     public displayName: string,
     public UUID = 'uuid:test',
     public context: Record<string, unknown> = {},
-  ) {}
+  ) {
+    this.hapDisplayName = displayName
+  }
+
+  updateDisplayName(name: string): void {
+    this.displayNameUpdates.push(name)
+    this.displayName = name
+    this.hapDisplayName = name
+  }
 
   getService(type: unknown): FakeService | undefined {
     const uuid = typeof type === 'string' ? type : (type as { UUID: string }).UUID

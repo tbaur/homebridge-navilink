@@ -250,14 +250,15 @@ describe('bringing accessories up', () => {
     }), api.api)
 
     const uuid = api.api.hap.uuid.generate(`homebridge-navilink:${DEVICE_ID}:dhw`)
-    const existing = new FakeAccessory('Boiler Hot Water', uuid) as unknown as PlatformAccessory
-    platform.configureAccessory(existing)
+    const existing = new FakeAccessory('Boiler Hot Water', uuid)
+    platform.configureAccessory(existing as unknown as PlatformAccessory)
     api.launch()
 
     // Re-registering would hand HomeKit a different accessory with the same
     // name, and the room, scenes and automations stay with the old one.
     expect(api.registered).toHaveLength(0)
     expect(api.unregistered).toHaveLength(0)
+    expect(existing.displayNameUpdates).toEqual([])
   })
 
   it('removes an accessory whose capability was switched off', () => {
@@ -292,15 +293,19 @@ describe('bringing accessories up', () => {
     }), api.api)
 
     const uuid = api.api.hap.uuid.generate(`homebridge-navilink:${DEVICE_ID}:dhw`)
-    platform.configureAccessory(
-      new FakeAccessory('Boiler Hot Water', uuid) as unknown as PlatformAccessory,
-    )
+    const existing = new FakeAccessory('Boiler Hot Water', uuid)
+    platform.configureAccessory(existing as unknown as PlatformAccessory)
     api.launch()
 
     expect(api.registered).toHaveLength(0)
     expect(log.calls.some((line) => (
       line.includes('Boiler Hot Water is now named Downstairs Boiler Hot Water')
     ))).toBe(true)
+    // The wrapper field is not what Homebridge restores. The persisted name
+    // has to move too, or the tile comes back under the old name.
+    expect(existing.displayNameUpdates).toEqual(['Downstairs Boiler Hot Water'])
+    expect(existing.hapDisplayName).toBe('Downstairs Boiler Hot Water')
+    expect(existing.displayName).toBe('Downstairs Boiler Hot Water')
   })
 })
 
