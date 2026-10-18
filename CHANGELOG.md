@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.4](https://github.com/tbaur/homebridge-navilink/compare/v1.0.3...v1.0.4) (2026-10-18)
+
+
+### Bug Fixes
+
+* rename cached accessories through updateDisplayName ([#32](https://github.com/tbaur/homebridge-navilink/issues/32)) ([c03764b](https://github.com/tbaur/homebridge-navilink/commit/c03764ba55e2e0fa794ec0607a47d6355e719234))
+
 ## [1.0.3](https://github.com/tbaur/homebridge-navilink/compare/v1.0.2...v1.0.3) (2026-09-20)
 
 
