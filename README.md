@@ -4,6 +4,7 @@
 [![npm version](https://img.shields.io/npm/v/homebridge-navilink?style=flat-square)](https://www.npmjs.com/package/homebridge-navilink)
 [![npm downloads](https://img.shields.io/npm/dt/homebridge-navilink?label=downloads&style=flat-square)](https://www.npmjs.com/package/homebridge-navilink)
 [![Node.js](https://img.shields.io/badge/node-22%20%7C%7C%2024%20%7C%7C%2026-green)](https://nodejs.org)
+[![verified-by-homebridge](https://img.shields.io/badge/homebridge-verified-blueviolet?color=%23491F59&style=flat)](https://github.com/homebridge/homebridge/wiki/Verified-Plugins)
 [![Homebridge](https://img.shields.io/badge/homebridge-2.x-purple)](https://homebridge.io)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 

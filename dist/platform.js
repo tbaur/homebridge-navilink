@@ -236,8 +236,11 @@ class NaviLinkPlatform {
         }
         if (accessory.displayName !== resolved.name) {
             this.log.info(`${(0, utils_1.forLog)(accessory.displayName)} is now named ${(0, utils_1.forLog)(resolved.name)}`);
+            // Assigning `displayName` only changes the wrapper. Homebridge publishes
+            // and restores the HAP accessory's name, so a cached tile keeps the old
+            // one until `updateDisplayName` writes both.
+            accessory.updateDisplayName(resolved.name);
         }
-        accessory.displayName = resolved.name;
         const init = {
             host: this,
             accessory,
