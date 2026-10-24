@@ -183,6 +183,12 @@ This plugin needs your NaviLink password, stores it in the Homebridge configurat
 
 
 
+## Trademarks
+
+homebridge-navilink is an independent project. It is not affiliated with or endorsed by Navien. Navien and NaviLink are trademarks of Kyungdong Navien Co., Ltd.
+
+
+
 ## License
 
 Copyright 2026 tbaur
