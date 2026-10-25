@@ -71,6 +71,8 @@ A ContactSensor that reads **open** when the appliance reports a non-zero error 
 
 The code and sub-code go to the log once per change (`error 12.3`, then `fault cleared`). Look the number up in your installation manual; naming them in the plugin is on the [roadmap](#roadmap).
 
+Paging this condition through homebridge-pagerduty does not require this tile. See [PagerDuty](#pagerduty).
+
 ### Temperature sensors (`temperatureSensors`)
 
 One tick, four sensors:
@@ -126,6 +128,7 @@ An appliance with no probe reports `0`. The plugin treats that as absent, not as
 | `options.diagnosticsInterval` | integer | `0` | Health heartbeat in the log, in seconds. `0` is off; otherwise `30`–`3600` |
 | `options.structuredLogs` | boolean | `false` | With diagnostics, also emit each report as JSON |
 | `options.accessoryPrefix` | string | *(blank)* | HomeKit names become `Prefix Hot Water`, `Prefix Heating`, and so on. Blank uses each appliance's name. Two appliances with the same prefix keep the appliance name in the tile so Siri can tell them apart |
+| `options.pagerdutySignals` | boolean | `false` | Write `fault.<gateway>.<channel>` and `auth-failed` to homebridge-pagerduty. See [PagerDuty](#pagerduty) |
 
 A trailing space on the password is trimmed. A password manager will happily paste one. The trim is mentioned once in the log. Without that, the cloud rejects a password that looks right and the failure is unexplainable.
 
@@ -297,6 +300,23 @@ In rough order, matching [FEATURES.md](FEATURES.md#not-built-yet):
 6. Fault-code names in the log instead of a number to look up
 
 Weekly schedules, commissioning settings and descaling reminders are [not planned](FEATURES.md#not-planned).
+
+## PagerDuty
+
+This plugin can page through [homebridge-pagerduty](https://github.com/tbaur/homebridge-pagerduty) when something needs attention. It needs Node 22.13 or later.
+
+1. Turn on **Send Signals to PagerDuty** (`options.pagerdutySignals`) in this plugin's settings.
+2. Restart Homebridge.
+3. In homebridge-pagerduty's settings, allow homebridge-navilink to page, save, and restart Homebridge again. [Signals from other plugins](https://github.com/tbaur/homebridge-pagerduty/blob/main/docs/SIGNALS.md#let-a-plugin-page) explains each step and what else you can set for each signal.
+
+Each condition below then opens a PagerDuty alert while it is present, and resolves it when it clears.
+
+| Signal | Severity | Active when |
+| --- | --- | --- |
+| `fault.<gateway>.<channel>` | critical | That appliance's latest status frame has a non-zero error code. One signal per configured appliance, whether or not the HomeKit fault tile is on. The error code stays in the Homebridge log |
+| `auth-failed` | error | NaviLink rejected the email or password and sign-in has stopped. A network failure, an open circuit breaker, or a rejected session token does not turn this on |
+
+A fault is written when the first status frame for that appliance arrives, and again when the code changes. It is not written clear before that frame, so a restart during a lockout does not resolve the page and open it again. Shutdown does not clear a signal. An appliance removed from the configuration is cleared on the next start with the setting on. A configuration that fails validation does not change the store.
 
 ## Troubleshooting
 

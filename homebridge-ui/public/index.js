@@ -257,6 +257,7 @@
     byId('diagnostics-interval').value = String(diagnostics)
     syncDiagnosticsLabel()
     byId('structured-logs').checked = platformConfig.options.structuredLogs === true
+    byId('pagerduty-signals').checked = platformConfig.options.pagerdutySignals === true
   }
 
   /** Keep the slider's number in step with the thumb. 0 is Off. */
@@ -295,6 +296,7 @@
       platformConfig.options.diagnosticsInterval = diagnostics
     }
     setFlag('structuredLogs', byId('structured-logs').checked === true)
+    setFlag('pagerdutySignals', byId('pagerduty-signals').checked === true)
 
     const email = byId('email').value.trim()
     const password = byId('password').value.trim()
@@ -520,6 +522,7 @@
     changed()
   })
   byId('structured-logs').addEventListener('change', () => changed())
+  byId('pagerduty-signals').addEventListener('change', () => changed())
   byId('toggle-json').addEventListener('click', () => {
     schemaFormVisible = !schemaFormVisible
     if (schemaFormVisible) {

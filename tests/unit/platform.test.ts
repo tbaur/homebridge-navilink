@@ -11,8 +11,14 @@
  * disable the plugin without unregistering anything, for the same reason.
  */
 
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import type * as Sqlite from 'node:sqlite'
 import type { API, Logging, PlatformAccessory, PlatformConfig } from 'homebridge'
 
+import { rememberedDevicesPath } from '../../src/navilink-signals'
+import { PagerDutySignals } from '../../src/pagerduty-signals'
 import { NaviLinkSession } from '../../src/session'
 import { ControlRejectedError } from '../../src/utils'
 import { DEVICE_ID, MAC } from '../helpers/cloud'
@@ -35,12 +41,18 @@ interface SessionSpy {
   emitObservation(deviceId: string, value: ReturnType<typeof observation>): void
   emitUnreachable(error: unknown): void
   options: ConstructorParameters<typeof NaviLinkSession>[0]
+  /** Log lines already written when start() ran, so order can be asserted. */
+  logAtStart: string[]
 }
+
+/** The log from the platform under test, so the session mock can snapshot it. */
+let activeLog: { calls: string[] } | undefined
 
 let sessions: SessionSpy[] = []
 
 beforeEach(() => {
   sessions = []
+  activeLog = undefined
   SessionMock.mockClear()
   SessionMock.mockImplementation((options) => {
     let onObservation: ((...args: never[]) => void) | undefined
@@ -69,7 +81,11 @@ beforeEach(() => {
       },
       emitUnreachable: (error) => onUnreachable?.(error),
       options,
+      logAtStart: [],
     }
+    spy.start.mockImplementation(() => {
+      spy.logAtStart = [...(activeLog?.calls ?? [])]
+    })
     sessions.push(spy)
     return {
       ...spy,
@@ -93,7 +109,7 @@ interface FakeApi {
   shutdown(): Promise<void>
 }
 
-function fakeApi(): FakeApi {
+function fakeApi(storagePath?: string): FakeApi {
   const registered: PlatformAccessory[] = []
   const unregistered: PlatformAccessory[] = []
   const handlers = new Map<string, (() => void)[]>()
@@ -121,6 +137,14 @@ function fakeApi(): FakeApi {
       unregistered.push(...accessories)
     },
     registerPlatform: jest.fn(),
+    user: {
+      storagePath: () => {
+        if (storagePath === undefined || storagePath.length === 0) {
+          throw new Error('storagePath was not set')
+        }
+        return storagePath
+      },
+    },
   } as unknown as API
 
   return {
@@ -155,6 +179,7 @@ function fakeLog(): Logging & { calls: string[] } {
   log.success = record('info')
   log.prefix = 'NaviLink'
   log.calls = calls
+  activeLog = log
   return log
 }
 
@@ -179,13 +204,14 @@ interface Built {
 function build(overrides: {
   config?: PlatformConfig
   restored?: PlatformAccessory[]
+  storagePath?: string
 } = {}): Built {
   // Required lazily so the session mock is installed before the module graph
   // that imports it is evaluated.
   const { NaviLinkPlatform } = require('../../src/platform') as
     typeof import('../../src/platform')
 
-  const api = fakeApi()
+  const api = fakeApi(overrides.storagePath)
   const log = fakeLog()
   const platform = new NaviLinkPlatform(log, overrides.config ?? config(), api.api)
   for (const accessory of overrides.restored ?? []) {
@@ -578,5 +604,196 @@ describe('shutting down', () => {
     const session = built.session()
     await built.api.shutdown()
     expect(session.stop).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('PagerDuty signals', () => {
+  const startupLine = 'homebridge-pagerduty support is enabled (fault.<gateway>.<channel>, auth-failed)'
+  let storagePath: string
+
+  beforeEach(() => {
+    storagePath = mkdtempSync(join(tmpdir(), 'navilink-platform-signals-'))
+  })
+
+  afterEach(() => {
+    rmSync(storagePath, { recursive: true, force: true })
+  })
+
+  function withSignals(overrides: Record<string, unknown> = {}): ReturnType<typeof build> {
+    return build({
+      storagePath,
+      config: config({
+        options: { pagerdutySignals: true },
+        ...overrides,
+      }),
+    })
+  }
+
+  it('does not log or create the store when the setting is off', () => {
+    const built = build({ storagePath })
+    built.session().options.onAuthentication?.('rejected')
+    built.session().emitObservation(DEVICE_ID, observation({
+      readings: { errorCode: 12, subErrorCode: 0 },
+    }))
+
+    expect(built.log.calls.some((line) => line.includes('homebridge-pagerduty'))).toBe(false)
+    expect(existsSync(join(storagePath, 'homebridge-pagerduty'))).toBe(false)
+    expect(existsSync(join(storagePath, 'homebridge-navilink'))).toBe(false)
+  })
+
+  it('logs support once, before the session starts, and not again on a second start', () => {
+    const built = withSignals()
+    const lines = built.log.calls.filter((line) => line.includes(startupLine))
+
+    expect(lines).toEqual([`info ${startupLine}`])
+    expect(built.session().logAtStart.some((line) => line.includes(startupLine))).toBe(true)
+    built.api.launch()
+    expect(built.log.calls.filter((line) => line.includes(startupLine))).toHaveLength(1)
+  })
+
+  it('does not log or write when configuration is unusable', () => {
+    const built = build({
+      storagePath,
+      config: config({ password: '', options: { pagerdutySignals: true } }),
+    })
+
+    expect(built.log.calls.some((line) => line.includes('homebridge-pagerduty'))).toBe(false)
+    expect(existsSync(join(storagePath, 'homebridge-pagerduty'))).toBe(false)
+    expect(sessions).toHaveLength(0)
+  })
+})
+
+const platformSqlite = typeof process.getBuiltinModule === 'function'
+  ? process.getBuiltinModule('node:sqlite') as typeof Sqlite | undefined
+  : undefined
+const describePlatformRows = platformSqlite === undefined ? describe.skip : describe
+
+describePlatformRows('PagerDuty signal rows', () => {
+  let storagePath: string
+
+  const storeFile = (): string => join(
+    storagePath,
+    'homebridge-pagerduty',
+    'signals-2026-10-24',
+    'signals.sqlite',
+  )
+
+  const readRows = (): { signal: string; active: number; severity: string; summary: string }[] => {
+    const db = new platformSqlite!.DatabaseSync(storeFile())
+    try {
+      return db.prepare(
+        'SELECT signal, active, severity, summary FROM signals ORDER BY signal',
+      ).all() as { signal: string; active: number; severity: string; summary: string }[]
+    } finally {
+      db.close()
+    }
+  }
+
+  beforeEach(() => {
+    storagePath = mkdtempSync(join(tmpdir(), 'navilink-platform-rows-'))
+  })
+
+  afterEach(() => {
+    rmSync(storagePath, { recursive: true, force: true })
+  })
+
+  function started(): ReturnType<typeof build> {
+    return build({
+      storagePath,
+      config: config({ options: { pagerdutySignals: true } }),
+    })
+  }
+
+  it('writes a fault from a status frame when the HomeKit fault tile is off', () => {
+    const built = started()
+    expect(existsSync(storeFile())).toBe(false)
+
+    built.session().emitObservation(DEVICE_ID, observation({
+      readings: { errorCode: 12, subErrorCode: 3 },
+    }))
+
+    expect(readRows()).toEqual([{
+      signal: 'fault.a1b2c3d4e5f6.1',
+      active: 1,
+      severity: 'critical',
+      summary: 'Navien Boiler is reporting a fault',
+    }])
+    expect(built.log.calls.some((line) => line.includes('adding Boiler Fault'))).toBe(false)
+  })
+
+  it('clears the fault when a later frame has no error code', () => {
+    const built = started()
+    built.session().emitObservation(DEVICE_ID, observation({
+      readings: { errorCode: 12, subErrorCode: 0 },
+    }))
+    built.session().emitObservation(DEVICE_ID, observation())
+
+    expect(readRows()).toEqual([{
+      signal: 'fault.a1b2c3d4e5f6.1',
+      active: 0,
+      severity: 'critical',
+      summary: 'Navien Boiler is reporting a fault',
+    }])
+  })
+
+  it('writes auth-failed only when sign-in is rejected, and clears it when sign-in is accepted', () => {
+    const built = started()
+    built.session().emitUnreachable(new Error('socket hang up'))
+    expect(existsSync(storeFile())).toBe(false)
+
+    built.session().options.onAuthentication?.('rejected')
+    expect(readRows()).toEqual([{
+      signal: 'auth-failed',
+      active: 1,
+      severity: 'error',
+      summary: 'NaviLink rejected the account email or password. Sign-in has stopped until it is corrected in Homebridge.',
+    }])
+
+    built.session().options.onAuthentication?.('accepted')
+    expect(readRows()[0]?.active).toBe(0)
+  })
+
+  it('clears a removed appliance at startup and leaves the row in place on shutdown', async () => {
+    mkdirSync(join(storagePath, 'homebridge-navilink'), { recursive: true })
+    writeFileSync(rememberedDevicesPath(storagePath), JSON.stringify({
+      devices: [
+        { id: DEVICE_ID, name: 'Boiler' },
+        { id: 'a1b2c3d4e5f6:2', name: 'Heater' },
+      ],
+    }))
+    const close = jest.spyOn(PagerDutySignals.prototype, 'close')
+    try {
+      const built = started()
+
+      expect(readRows()).toEqual([{
+        signal: 'fault.a1b2c3d4e5f6.2',
+        active: 0,
+        severity: 'critical',
+        summary: 'Navien Heater is reporting a fault',
+      }])
+
+      built.session().emitObservation(DEVICE_ID, observation({
+        readings: { errorCode: 4, subErrorCode: 0 },
+      }))
+      await built.api.shutdown()
+
+      expect(close).toHaveBeenCalledTimes(1)
+      expect(readRows()).toEqual([
+        {
+          signal: 'fault.a1b2c3d4e5f6.1',
+          active: 1,
+          severity: 'critical',
+          summary: 'Navien Boiler is reporting a fault',
+        },
+        {
+          signal: 'fault.a1b2c3d4e5f6.2',
+          active: 0,
+          severity: 'critical',
+          summary: 'Navien Heater is reporting a fault',
+        },
+      ])
+    } finally {
+      close.mockRestore()
+    }
   })
 })

@@ -132,6 +132,14 @@ export interface NaviLinkSessionOptions {
   metrics?: SessionMetrics
   /** Fired when REST trips OPEN, so diagnostics can count a trip. */
   onCircuitOpen?: () => void
+  /**
+   * Sign-in finished one way or the other.
+   *
+   * `accepted` means the account was taken. A later network failure or a
+   * rejected session token is not this. `rejected` means NaviLink refused
+   * the email or password and sign-in has stopped.
+   */
+  onAuthentication?: (result: 'accepted' | 'rejected') => void
 }
 
 /** Everything the session tracks for one gateway. */
@@ -443,6 +451,7 @@ export class NaviLinkSession {
     this.clearTimers()
     this.dropConnection()
     const tokens = await this.rest.signIn(this.options.account.email, this.options.account.password)
+    this.reportAuthentication('accepted')
     this.expiresAt = tokens.expiresAt
     if (this.lastRefreshAt !== undefined) {
       this.options.metrics?.sessionRefresh()
@@ -670,7 +679,17 @@ export class NaviLinkSession {
     this.clearTimers()
     this.dropConnection()
     this.log.error(`${error.message}; sign-in stopped`)
+    this.reportAuthentication('rejected')
     this.notifyUnreachable(error)
+  }
+
+  /** Tell the platform, and keep a thrown listener from stopping the session. */
+  private reportAuthentication(result: 'accepted' | 'rejected'): void {
+    try {
+      this.options.onAuthentication?.(result)
+    } catch (error) {
+      this.log.debug(`an authentication listener threw: ${describeError(error)}`)
+    }
   }
 
   /** True when the session has given up for a reason the user must fix. */

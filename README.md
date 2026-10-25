@@ -143,9 +143,25 @@ Only one `NaviLink` platform block is supported. It can hold as many appliances 
 | `options.diagnosticsInterval` |                 | Seconds between health lines in the log; `0` is off (default), else `30`–`3600` |
 | `options.structuredLogs`      |                 | With diagnostics, also emit a JSON line (default false)                         |
 | `options.accessoryPrefix`     |                 | Prefix for every HomeKit name. Blank uses each appliance's name                 |
+| `options.pagerdutySignals`    |                 | Send alert conditions to homebridge-pagerduty (default off). See [PagerDuty](#pagerduty) |
 
 
 Each entry in `devices[]` takes `id` and `name`, plus an optional `channel` and one flag per accessory: `dhw`, `heating`, `power`, `recirculation`, `fault`, `temperatureSensors` and `outdoorSensor`. The [detailed documentation](docs/README-DETAILED.md#devices-entries) describes each one.
+
+## PagerDuty
+
+This plugin can page through [homebridge-pagerduty](https://github.com/tbaur/homebridge-pagerduty) when something needs attention. It needs Node 22.13 or later.
+
+1. Turn on **Send Signals to PagerDuty** (`options.pagerdutySignals`) in this plugin's settings.
+2. Restart Homebridge.
+3. In homebridge-pagerduty's settings, allow homebridge-navilink to page, save, and restart Homebridge again. [Signals from other plugins](https://github.com/tbaur/homebridge-pagerduty/blob/main/docs/SIGNALS.md#let-a-plugin-page) explains each step and what else you can set for each signal.
+
+Each condition below then opens a PagerDuty alert while it is present, and resolves it when it clears.
+
+| Signal | Severity | Active when |
+| --- | --- | --- |
+| `fault.<gateway>.<channel>` | critical | That appliance's latest status frame has a non-zero error code |
+| `auth-failed` | error | NaviLink rejected the email or password and sign-in has stopped |
 
 ## Not Working?
 

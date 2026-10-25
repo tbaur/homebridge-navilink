@@ -74,6 +74,14 @@ export interface NaviLinkSessionOptions {
     metrics?: SessionMetrics;
     /** Fired when REST trips OPEN, so diagnostics can count a trip. */
     onCircuitOpen?: () => void;
+    /**
+     * Sign-in finished one way or the other.
+     *
+     * `accepted` means the account was taken. A later network failure or a
+     * rejected session token is not this. `rejected` means NaviLink refused
+     * the email or password and sign-in has stopped.
+     */
+    onAuthentication?: (result: 'accepted' | 'rejected') => void;
 }
 /** Owns the plugin's entire relationship with the NaviLink cloud. */
 export declare class NaviLinkSession {
@@ -202,6 +210,8 @@ export declare class NaviLinkSession {
     private waitForSessionEnd;
     /** Stop trying, and say why exactly once. */
     private stopPermanently;
+    /** Tell the platform, and keep a thrown listener from stopping the session. */
+    private reportAuthentication;
     /** True when the session has given up for a reason the user must fix. */
     get hasStoppedPermanently(): boolean;
     private requestChannelInfo;

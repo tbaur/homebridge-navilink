@@ -35,6 +35,7 @@ const protocol_1 = require("./api/protocol");
 const devices_1 = require("./devices");
 const collector_1 = require("./diagnostics/collector");
 const format_1 = require("./diagnostics/format");
+const navilink_signals_1 = require("./navilink-signals");
 const session_1 = require("./session");
 const settings_1 = require("./settings");
 const types_1 = require("./types");
@@ -59,8 +60,13 @@ class NaviLinkPlatform {
         diagnosticsInterval: 0,
         structuredLogs: false,
         accessoryPrefix: '',
+        pagerdutySignals: false,
     };
     session;
+    /** PagerDuty signals, present only when the user turned them on. */
+    signals;
+    /** The startup line is once per process, including a second call to start. */
+    hasAnnouncedPagerDuty = false;
     platformConfig;
     diagnostics;
     diagnosticsTimer;
@@ -124,6 +130,7 @@ class NaviLinkPlatform {
             this.log.warn(warning);
         }
         this.syncAccessories(accessories);
+        this.openPagerDuty(devices);
         const session = new session_1.NaviLinkSession({
             log: this.log,
             account,
@@ -131,8 +138,12 @@ class NaviLinkPlatform {
             statusIntervalSec: this.options.statusIntervalSec,
             metrics: this.diagnostics,
             onCircuitOpen: () => this.diagnostics.breakerTrip(),
+            onAuthentication: (result) => {
+                this.signals?.setAuthenticationRejected(result === 'rejected');
+            },
         });
         session.onObservation((deviceId, observation, reason) => {
+            this.noteFault(deviceId, observation);
             this.distribute(deviceId, observation, reason);
         });
         session.onUnreachable((error) => this.markAllUnreachable(error));
@@ -148,8 +159,51 @@ class NaviLinkPlatform {
             handler.stop();
         }
         this.handlers.clear();
-        await this.session?.stop();
-        this.session = undefined;
+        try {
+            await this.session?.stop();
+        }
+        finally {
+            this.session = undefined;
+            this.signals?.close();
+            this.signals = undefined;
+        }
+    }
+    /**
+     * Open PagerDuty signals when the user asked for them.
+     *
+     * The log line comes before sign-in, so it is still there when sign-in
+     * then fails. Current fault state is not written here: that waits for a
+     * status frame, so a restart during a lockout does not resolve the page.
+     */
+    openPagerDuty(devices) {
+        if (!this.options.pagerdutySignals) {
+            return;
+        }
+        if (!this.hasAnnouncedPagerDuty) {
+            this.hasAnnouncedPagerDuty = true;
+            this.log.info(navilink_signals_1.PAGERDUTY_STARTUP_LOG);
+        }
+        if (this.signals === undefined) {
+            const storagePath = this.api.user.storagePath();
+            if (storagePath.length === 0) {
+                this.log.warn('PagerDuty signals need a Homebridge storage directory; not writing signals');
+                return;
+            }
+            this.signals = (0, navilink_signals_1.createNaviLinkSignals)({
+                plugin: settings_1.PLUGIN_NAME,
+                storagePath,
+                log: this.log,
+            });
+        }
+        this.signals.syncDevices(devices);
+    }
+    /** A status frame is the first moment a fault is known, tile or no tile. */
+    noteFault(deviceId, observation) {
+        const device = this.devices.get(deviceId);
+        if (device === undefined) {
+            return;
+        }
+        this.signals?.setFault(device.id, device.name, observation.readings.errorCode !== 0);
     }
     /** Keep cached accessories registered when configuration is unusable. */
     keepRestoredRegistered() {

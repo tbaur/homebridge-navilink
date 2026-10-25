@@ -122,6 +122,13 @@ export interface NaviLinkPlatformOptions {
      * attached if you rename later.
      */
     accessoryPrefix?: string;
+    /**
+     * Write fault and sign-in conditions to homebridge-pagerduty's signal store.
+     *
+     * Off by default. The plugin does not page until the user also allows it
+     * in homebridge-pagerduty. Needs Node 22.13 or later.
+     */
+    pagerdutySignals?: boolean;
 }
 /** Shape of one `platforms[]` entry in `config.json`. */
 export interface NaviLinkPlatformConfig {

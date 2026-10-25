@@ -140,6 +140,12 @@ describe('config.schema.json', () => {
     )
   })
 
+  it('offers PagerDuty signals off by default', () => {
+    expect(schema.schema.properties.options?.properties?.pagerdutySignals).toEqual(
+      expect.objectContaining({ type: 'boolean', default: false }),
+    )
+  })
+
   it('offers an accessory prefix without baking a room name into the default', () => {
     expect(schema.schema.properties.options?.properties?.accessoryPrefix).toEqual(
       expect.objectContaining({ type: 'string', maxLength: 64 }),

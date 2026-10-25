@@ -52,6 +52,7 @@ export interface ResolvedPlatformOptions {
   diagnosticsInterval: number
   structuredLogs: boolean
   accessoryPrefix: string
+  pagerdutySignals: boolean
 }
 
 /** The account, once it is known to be usable. */
@@ -374,6 +375,7 @@ export function validateConfig(config: unknown): ConfigValidationResult {
     diagnosticsInterval: 0,
     structuredLogs: false,
     accessoryPrefix: '',
+    pagerdutySignals: false,
   }
 
   if (typeof config !== 'object' || config === null) {
@@ -392,6 +394,7 @@ export function validateConfig(config: unknown): ConfigValidationResult {
     ),
     structuredLogs: platform.options?.structuredLogs === true,
     accessoryPrefix: resolveAccessoryPrefix(platform.options?.accessoryPrefix, warnings),
+    pagerdutySignals: platform.options?.pagerdutySignals === true,
   }
 
   const rawDevices = platform.devices

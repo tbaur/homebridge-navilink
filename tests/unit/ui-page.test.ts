@@ -124,7 +124,8 @@ async function settle(): Promise<void> {
 const ELEMENT_IDS = [
   'devices', 'summary', 'email', 'password', 'discover',
   'interval', 'read-only', 'allow-power-off', 'accessory-prefix',
-  'diagnostics-interval', 'diagnostics-interval-value', 'structured-logs', 'toggle-json',
+  'diagnostics-interval', 'diagnostics-interval-value', 'structured-logs',
+  'pagerduty-signals', 'toggle-json',
 ]
 
 /** A discovered appliance, as the UI server would return it. */
@@ -622,6 +623,31 @@ describe('what gets written', () => {
       config: [{ ...configured[0], options: { accessoryPrefix: 'Zone One' } }],
     })
     expect(page.byId('accessory-prefix').value).toBe('Zone One')
+  })
+
+  it('drops pagerdutySignals when it is off, so an absent key is not a decision', async () => {
+    const page = await load({
+      config: [{ ...configured[0], options: { pagerdutySignals: true } }],
+    })
+    page.byId('pagerduty-signals').checked = false
+    page.byId('pagerduty-signals').fire('change')
+    await page.settle()
+    expect(page.savedOptions()).not.toHaveProperty('pagerdutySignals')
+  })
+
+  it('writes pagerdutySignals when the user opts in', async () => {
+    const page = await load({ config: configured })
+    page.byId('pagerduty-signals').checked = true
+    page.byId('pagerduty-signals').fire('change')
+    await page.settle()
+    expect(page.savedOptions().pagerdutySignals).toBe(true)
+  })
+
+  it('restores a saved PagerDuty switch', async () => {
+    const page = await load({
+      config: [{ ...configured[0], options: { pagerdutySignals: true } }],
+    })
+    expect(page.byId('pagerduty-signals').checked).toBe(true)
   })
 
   it('writes diagnostics options when the user turns them on', async () => {

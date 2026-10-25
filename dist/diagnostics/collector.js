@@ -244,6 +244,7 @@ function redactConfig(config) {
         structuredLogs: options?.structuredLogs ?? false,
         readOnly: options?.readOnly === true,
         allowPowerOff: options?.allowPowerOff === true,
+        pagerdutySignals: options?.pagerdutySignals === true,
         accessoryPrefix: typeof options?.accessoryPrefix === 'string'
             && options.accessoryPrefix.trim().length > 0,
         devices: Array.isArray(config.devices) ? config.devices.length : 0,
