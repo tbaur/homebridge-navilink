@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.1](https://github.com/tbaur/homebridge-navilink/compare/v1.1.0...v1.1.1) (2026-10-25)
+
+
+### Bug Fixes
+
+* name PagerDuty fault signals from the appliance ([2ee282f](https://github.com/tbaur/homebridge-navilink/commit/2ee282f38a62c1dc60d31f819c7342b37f0fa819))
+
 ## [1.1.0](https://github.com/tbaur/homebridge-navilink/compare/v1.0.4...v1.1.0) (2026-10-25)
 
 
