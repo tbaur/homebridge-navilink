@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/tbaur/homebridge-navilink/compare/v1.0.4...v1.1.0) (2026-10-25)
+
+
+### Features
+
+* page appliance faults and a rejected sign-in ([#37](https://github.com/tbaur/homebridge-navilink/issues/37)) ([d517887](https://github.com/tbaur/homebridge-navilink/commit/d517887c223665cfadfb0916d4e10da051fb1b2c))
+
 ## [1.0.4](https://github.com/tbaur/homebridge-navilink/compare/v1.0.3...v1.0.4) (2026-10-18)
 
 
