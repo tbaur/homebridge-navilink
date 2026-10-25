@@ -11,14 +11,14 @@
  * disable the plugin without unregistering anything, for the same reason.
  */
 
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type * as Sqlite from 'node:sqlite'
 import type { API, Logging, PlatformAccessory, PlatformConfig } from 'homebridge'
 
-import { rememberedDevicesPath } from '../../src/navilink-signals'
 import { PagerDutySignals } from '../../src/pagerduty-signals'
+import { PLUGIN_NAME } from '../../src/settings'
 import { NaviLinkSession } from '../../src/session'
 import { ControlRejectedError } from '../../src/utils'
 import { DEVICE_ID, MAC } from '../helpers/cloud'
@@ -139,7 +139,7 @@ function fakeApi(storagePath?: string): FakeApi {
     registerPlatform: jest.fn(),
     user: {
       storagePath: () => {
-        if (storagePath === undefined || storagePath.length === 0) {
+        if (storagePath === undefined) {
           throw new Error('storagePath was not set')
         }
         return storagePath
@@ -608,7 +608,7 @@ describe('shutting down', () => {
 })
 
 describe('PagerDuty signals', () => {
-  const startupLine = 'homebridge-pagerduty support is enabled (fault.<gateway>.<channel>, auth-failed)'
+  const startupLine = 'homebridge-pagerduty support is enabled (fault.<name>, auth-failed)'
   let storagePath: string
 
   beforeEach(() => {
@@ -649,6 +649,20 @@ describe('PagerDuty signals', () => {
     expect(built.session().logAtStart.some((line) => line.includes(startupLine))).toBe(true)
     built.api.launch()
     expect(built.log.calls.filter((line) => line.includes(startupLine))).toHaveLength(1)
+  })
+
+  it('warns once and does not claim support when there is no storage directory', () => {
+    const built = build({
+      storagePath: '',
+      config: config({ options: { pagerdutySignals: true } }),
+    })
+
+    expect(built.log.calls.some((line) => line.includes(startupLine))).toBe(false)
+    expect(built.log.calls.filter((line) => line.includes('storage directory'))).toEqual([
+      'warn PagerDuty signals need a Homebridge storage directory; not writing signals',
+    ])
+    built.api.launch()
+    expect(built.log.calls.filter((line) => line.includes('storage directory'))).toHaveLength(1)
   })
 
   it('does not log or write when configuration is unusable', () => {
@@ -713,7 +727,7 @@ describePlatformRows('PagerDuty signal rows', () => {
     }))
 
     expect(readRows()).toEqual([{
-      signal: 'fault.a1b2c3d4e5f6.1',
+      signal: 'fault.boiler',
       active: 1,
       severity: 'critical',
       summary: 'Navien Boiler is reporting a fault',
@@ -729,7 +743,7 @@ describePlatformRows('PagerDuty signal rows', () => {
     built.session().emitObservation(DEVICE_ID, observation())
 
     expect(readRows()).toEqual([{
-      signal: 'fault.a1b2c3d4e5f6.1',
+      signal: 'fault.boiler',
       active: 0,
       severity: 'critical',
       summary: 'Navien Boiler is reporting a fault',
@@ -753,20 +767,91 @@ describePlatformRows('PagerDuty signal rows', () => {
     expect(readRows()[0]?.active).toBe(0)
   })
 
-  it('clears a removed appliance at startup and leaves the row in place on shutdown', async () => {
-    mkdirSync(join(storagePath, 'homebridge-navilink'), { recursive: true })
-    writeFileSync(rememberedDevicesPath(storagePath), JSON.stringify({
-      devices: [
-        { id: DEVICE_ID, name: 'Boiler' },
-        { id: 'a1b2c3d4e5f6:2', name: 'Heater' },
-      ],
+  it('clears active signals when the setting is turned off and does not open them again', () => {
+    const seeder = new PagerDutySignals({
+      plugin: PLUGIN_NAME,
+      storagePath,
+      log: { warn: () => undefined },
+    })
+    seeder.write('fault.boiler', {
+      active: true,
+      severity: 'critical',
+      summary: 'Navien Boiler is reporting a fault',
+    })
+    seeder.write('auth-failed', {
+      active: true,
+      severity: 'error',
+      summary: 'NaviLink rejected the account email or password. Sign-in has stopped until it is corrected in Homebridge.',
+    })
+    seeder.close()
+
+    const built = build({ storagePath })
+    built.session().options.onAuthentication?.('rejected')
+    built.session().emitObservation(DEVICE_ID, observation({
+      readings: { errorCode: 12, subErrorCode: 0 },
     }))
+
+    expect(built.log.calls.some((line) => line.includes('homebridge-pagerduty support'))).toBe(false)
+    expect(readRows()).toEqual([
+      {
+        signal: 'auth-failed',
+        active: 0,
+        severity: 'error',
+        summary: 'NaviLink rejected the account email or password. Sign-in has stopped until it is corrected in Homebridge.',
+      },
+      {
+        signal: 'fault.boiler',
+        active: 0,
+        severity: 'critical',
+        summary: 'Navien Boiler is reporting a fault',
+      },
+    ])
+  })
+
+  it('does not clear signals when configuration is unusable', () => {
+    const seeder = new PagerDutySignals({
+      plugin: PLUGIN_NAME,
+      storagePath,
+      log: { warn: () => undefined },
+    })
+    seeder.write('fault.boiler', {
+      active: true,
+      severity: 'critical',
+      summary: 'Navien Boiler is reporting a fault',
+    })
+    seeder.close()
+
+    build({
+      storagePath,
+      config: config({ password: '', options: { pagerdutySignals: true } }),
+    })
+
+    expect(readRows()).toEqual([{
+      signal: 'fault.boiler',
+      active: 1,
+      severity: 'critical',
+      summary: 'Navien Boiler is reporting a fault',
+    }])
+  })
+
+  it('clears a fault for an appliance that left the configuration and leaves it on shutdown', async () => {
+    const seeder = new PagerDutySignals({
+      plugin: PLUGIN_NAME,
+      storagePath,
+      log: { warn: () => undefined },
+    })
+    seeder.write('fault.heater', {
+      active: true,
+      severity: 'critical',
+      summary: 'Navien Heater is reporting a fault',
+    })
+    seeder.close()
     const close = jest.spyOn(PagerDutySignals.prototype, 'close')
     try {
       const built = started()
 
       expect(readRows()).toEqual([{
-        signal: 'fault.a1b2c3d4e5f6.2',
+        signal: 'fault.heater',
         active: 0,
         severity: 'critical',
         summary: 'Navien Heater is reporting a fault',
@@ -780,13 +865,13 @@ describePlatformRows('PagerDuty signal rows', () => {
       expect(close).toHaveBeenCalledTimes(1)
       expect(readRows()).toEqual([
         {
-          signal: 'fault.a1b2c3d4e5f6.1',
+          signal: 'fault.boiler',
           active: 1,
           severity: 'critical',
           summary: 'Navien Boiler is reporting a fault',
         },
         {
-          signal: 'fault.a1b2c3d4e5f6.2',
+          signal: 'fault.heater',
           active: 0,
           severity: 'critical',
           summary: 'Navien Heater is reporting a fault',

@@ -22,7 +22,7 @@ A checklist of what is built. The plugin aims to cover everything about a Navien
 
 - ✅ **Push, not polling.** A change made in the NaviLink app or at the wall controller reaches HomeKit in about a second. The poll is only a backstop
 - ✅ **A rejected password is never retried.** The session stops and logs `NaviLink rejected the email address or password; sign-in stopped`
-- ✅ **PagerDuty signals** (`options.pagerdutySignals`, off by default): `fault.<gateway>.<channel>` when an appliance reports an error code, and `auth-failed` when NaviLink rejects the account and sign-in stops
+- ✅ **PagerDuty signals** (`options.pagerdutySignals`, off by default): `fault.<name>` when an appliance reports an error code, using that appliance's name from config, and `auth-failed` when NaviLink rejects the account and sign-in stops
 - ✅ **Credentials are renewed on a clock,** a few minutes before they expire. A planned refresh is not logged as an outage; tiles stay current
 - ✅ **A connected socket is not a live appliance.** Readings carry the time they were taken, and a stale one becomes No Response
 - ✅ **State:** No Response until the appliance has actually been read, and not a value it cannot confirm

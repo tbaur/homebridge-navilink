@@ -48,6 +48,8 @@ export declare class NaviLinkPlatform implements DynamicPlatformPlugin, Accessor
     private signals;
     /** The startup line is once per process, including a second call to start. */
     private hasAnnouncedPagerDuty;
+    /** The missing-storage warning is once per process. */
+    private hasWarnedMissingSignalStorage;
     private readonly platformConfig;
     private readonly diagnostics;
     private diagnosticsTimer;
@@ -67,11 +69,18 @@ export declare class NaviLinkPlatform implements DynamicPlatformPlugin, Accessor
     /**
      * Open PagerDuty signals when the user asked for them.
      *
-     * The log line comes before sign-in, so it is still there when sign-in
-     * then fails. Current fault state is not written here: that waits for a
-     * status frame, so a restart during a lockout does not resolve the page.
+     * The log line comes before sign-in, and only once a storage directory is
+     * known. Current fault state is not written here: that waits for a status
+     * frame, so a restart during a lockout does not resolve the page.
+     *
+     * Turning the setting off clears active rows. A restart with the setting
+     * on does not, or a page that is still true would resolve and open again.
      */
     private openPagerDuty;
+    /** Resolve every active signal. Leaves the store alone when it is not there. */
+    private retirePagerDuty;
+    private storagePathForSignals;
+    private warnMissingSignalStorage;
     /** A status frame is the first moment a fault is known, tile or no tile. */
     private noteFault;
     /** Keep cached accessories registered when configuration is unusable. */

@@ -11,7 +11,7 @@ npm run build
 node scripts/capture-fixture.js --redact
 ```
 
-The [supported devices table](README.md#supported-devices) is confirmed on an NCB-240E. Other families are decoded from the same table the NaviLink app uses. A capture from one of those lets the table say so.
+The [supported devices table](docs/README-DETAILED.md#supported-devices) is confirmed on an NCB-240E. Other families are decoded from the same table the NaviLink app uses. A capture from one of those lets the table say so.
 
 ## Getting Started
 

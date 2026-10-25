@@ -8,27 +8,35 @@
  * homebridge-pagerduty signals.
  *
  * The store writer is the copied module. This file decides which conditions
- * are worth a page, and remembers which appliances were configured so a
- * removed one can be cleared. The remembered file is this plugin's own. It
- * is not the signal store, and it is never logged.
+ * are worth a page. A fault signal is the appliance's name from config. A
+ * fault still in the store under a name that is no longer configured is
+ * cleared from the store itself, so this plugin keeps no list of its own.
  */
-import type { PagerDutySignalsOptions, SignalState } from './pagerduty-signals';
-/** Logged once, with the pattern rather than each gateway. */
-export declare const PAGERDUTY_STARTUP_LOG = "homebridge-pagerduty support is enabled (fault.<gateway>.<channel>, auth-failed)";
+import type { PagerDutySignalsOptions, SignalSeverity, SignalState } from './pagerduty-signals';
+/** Logged once, with the pattern rather than each appliance name. */
+export declare const PAGERDUTY_STARTUP_LOG = "homebridge-pagerduty support is enabled (fault.<name>, auth-failed)";
 export declare const SIGNAL_AUTH_FAILED = "auth-failed";
+/** One row this plugin has already written. */
+export interface ListedSignal {
+    signal: string;
+    active: boolean;
+    severity: SignalSeverity;
+    summary: string;
+}
 /** The subset of the store writer this class uses. */
 export interface SignalWriter {
     write(signal: string, state: SignalState): void;
+    list(): readonly ListedSignal[];
     close(): void;
 }
 /**
- * The signal name for one appliance.
+ * The signal name for one appliance, from its configured name.
  *
- * The device id is `{mac}:{channel}`. A signal name cannot contain a colon,
- * so the separator becomes a dot. Undefined when the id is not one this
- * plugin would configure.
+ * The store only accepts lowercase letters, digits, `.`, `_` and `-`. A space
+ * or anything else becomes a hyphen. Undefined when the name has none of the
+ * accepted characters.
  */
-export declare function faultSignalName(deviceId: string): string | undefined;
+export declare function faultSignalName(name: string): string | undefined;
 /**
  * The PagerDuty title for an appliance fault.
  *
@@ -36,8 +44,6 @@ export declare function faultSignalName(deviceId: string): string | undefined;
  * because a saved PagerDuty message is fixed text and would keep an old code.
  */
 export declare function faultSummary(name: string): string;
-/** Where the remembered appliance list lives. Local storage, not the repo. */
-export declare function rememberedDevicesPath(storagePath: string): string;
 /**
  * Fault and sign-in signals for this plugin.
  *
@@ -48,29 +54,42 @@ export declare function rememberedDevicesPath(storagePath: string): string;
  */
 export declare class NaviLinkSignals {
     private readonly writer;
-    private readonly storagePath;
     private readonly log;
     private readonly warned;
-    constructor(writer: SignalWriter, storagePath: string, log: {
+    /** Signal name for each configured appliance, including collision suffixes. */
+    private signalFor;
+    /** Appliances that had a name but no free signal. */
+    private readonly unassigned;
+    constructor(writer: SignalWriter, log: {
         warn(message: string): void;
     });
     /**
-     * Clear fault signals for appliances that are no longer configured, then
-     * remember the current set. Does not write the current appliances: their
-     * fault state is not known until a status frame arrives.
+     * Clear fault signals whose names are no longer configured.
+     *
+     * Does not write the current appliances: their fault state is not known
+     * until a status frame arrives.
      */
     syncDevices(devices: readonly {
         id: string;
         name: string;
     }[]): void;
+    /**
+     * Resolve every active signal.
+     *
+     * Used when the user turns signals off. A restart with the setting on must
+     * not do this, or a lockout that is still in progress would resolve and
+     * open again.
+     */
+    clearActive(): void;
     /** Record whether this appliance's latest status frame has an error code. */
     setFault(deviceId: string, name: string, isActive: boolean): void;
     /** Record whether NaviLink has rejected the account and stopped sign-in. */
     setAuthenticationRejected(isRejected: boolean): void;
     /** Close the store. Does not clear any signal. */
     close(): void;
-    private readRemembered;
-    private writeRemembered;
+    private listedSignals;
+    private warnUnusable;
+    private warnTaken;
     private warnOnce;
 }
 /** Build the signals for this plugin, backed by the homebridge-pagerduty store. */

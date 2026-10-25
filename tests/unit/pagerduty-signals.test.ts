@@ -102,7 +102,7 @@ describeWithSqlite('PagerDutySignals', () => {
     const builtin = jest.spyOn(process, 'getBuiltinModule').mockReturnValue(undefined)
     try {
       signals.write('auth-failed', { active: true, severity: 'error', summary: 'Sign-in rejected' })
-      signals.write('fault.a1b2c3d4e5f6.1', {
+      signals.write('fault.boiler', {
         active: true,
         severity: 'critical',
         summary: 'Navien Boiler is reporting a fault',
@@ -114,5 +114,31 @@ describeWithSqlite('PagerDutySignals', () => {
     } finally {
       builtin.mockRestore()
     }
+  })
+
+  it('lists nothing and creates nothing before the first write', () => {
+    expect(signals.list()).toEqual([])
+    expect(existsSync(storeDir())).toBe(false)
+  })
+
+  it('lists this plugin\'s rows and not another plugin\'s', () => {
+    signals.write('fault.boiler', {
+      active: true,
+      severity: 'critical',
+      summary: 'Navien Boiler is reporting a fault',
+    })
+    signals.write('auth-failed', { active: false, severity: 'error', summary: 'Sign-in rejected' })
+    const other = new PagerDutySignals({
+      plugin: 'homebridge-other',
+      storagePath,
+      log: { warn: jest.fn() },
+    })
+    other.write('fault.other', { active: true, severity: 'critical', summary: 'Other' })
+    other.close()
+
+    expect(signals.list()).toEqual([
+      { signal: 'auth-failed', active: false, severity: 'error', summary: 'Sign-in rejected' },
+      { signal: 'fault.boiler', active: true, severity: 'critical', summary: 'Navien Boiler is reporting a fault' },
+    ])
   })
 })

@@ -1,4 +1,4 @@
-import { closeSync, mkdirSync, openSync } from 'node:fs'
+import { closeSync, existsSync, mkdirSync, openSync } from 'node:fs'
 import { join } from 'node:path'
 import type * as Sqlite from 'node:sqlite'
 
@@ -81,6 +81,49 @@ export class PagerDutySignals {
     this.db = undefined
   }
 
+  /**
+   * This plugin's rows, or an empty list when the store does not exist yet.
+   *
+   * A removed appliance is cleared from these rows. Nothing is created here,
+   * so a start with nothing to say leaves no store.
+   */
+  list(): readonly { signal: string; active: boolean; severity: SignalSeverity; summary: string }[] {
+    if (this.isDisabled) {
+      return []
+    }
+    const file = join(this.options.storagePath, STORE_DIR, INTERFACE_ID, STORE_FILE)
+    if (!existsSync(file)) {
+      return []
+    }
+    try {
+      const db = this.db ?? this.open()
+      const rows = db.prepare(
+        'SELECT signal, active, severity, summary FROM signals WHERE plugin = ? ORDER BY signal',
+      ).all(this.options.plugin) as unknown as {
+        signal: string
+        active: number
+        severity: string
+        summary: string
+      }[]
+      return rows.flatMap((row) => {
+        if (!isSeverity(row.severity)) {
+          return []
+        }
+        return [{
+          signal: row.signal,
+          active: row.active === 1,
+          severity: row.severity,
+          summary: row.summary,
+        }]
+      })
+    } catch (error) {
+      this.warnOnce(
+        `PagerDuty signals could not be read: ${error instanceof Error ? error.message : String(error)}`,
+      )
+      return []
+    }
+  }
+
   private open(): Sqlite.DatabaseSync {
     // Loaded here, not imported at the top, so the plugin still loads on a
     // Node version without node:sqlite.
@@ -119,4 +162,8 @@ export class PagerDutySignals {
       this.options.log.warn(message)
     }
   }
+}
+
+function isSeverity(value: string): value is SignalSeverity {
+  return value === 'info' || value === 'warning' || value === 'error' || value === 'critical'
 }

@@ -60,6 +60,40 @@ class PagerDutySignals {
         this.db?.close();
         this.db = undefined;
     }
+    /**
+     * This plugin's rows, or an empty list when the store does not exist yet.
+     *
+     * A removed appliance is cleared from these rows. Nothing is created here,
+     * so a start with nothing to say leaves no store.
+     */
+    list() {
+        if (this.isDisabled) {
+            return [];
+        }
+        const file = (0, node_path_1.join)(this.options.storagePath, STORE_DIR, INTERFACE_ID, STORE_FILE);
+        if (!(0, node_fs_1.existsSync)(file)) {
+            return [];
+        }
+        try {
+            const db = this.db ?? this.open();
+            const rows = db.prepare('SELECT signal, active, severity, summary FROM signals WHERE plugin = ? ORDER BY signal').all(this.options.plugin);
+            return rows.flatMap((row) => {
+                if (!isSeverity(row.severity)) {
+                    return [];
+                }
+                return [{
+                        signal: row.signal,
+                        active: row.active === 1,
+                        severity: row.severity,
+                        summary: row.summary,
+                    }];
+            });
+        }
+        catch (error) {
+            this.warnOnce(`PagerDuty signals could not be read: ${error instanceof Error ? error.message : String(error)}`);
+            return [];
+        }
+    }
     open() {
         // Loaded here, not imported at the top, so the plugin still loads on a
         // Node version without node:sqlite.
@@ -99,3 +133,6 @@ class PagerDutySignals {
     }
 }
 exports.PagerDutySignals = PagerDutySignals;
+function isSeverity(value) {
+    return value === 'info' || value === 'warning' || value === 'error' || value === 'critical';
+}

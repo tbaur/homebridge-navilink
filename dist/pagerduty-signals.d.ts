@@ -28,6 +28,18 @@ export declare class PagerDutySignals {
     write(signal: string, state: SignalState): void;
     /** Close the connection. Call on Homebridge `shutdown`. Never clears a signal. */
     close(): void;
+    /**
+     * This plugin's rows, or an empty list when the store does not exist yet.
+     *
+     * A removed appliance is cleared from these rows. Nothing is created here,
+     * so a start with nothing to say leaves no store.
+     */
+    list(): readonly {
+        signal: string;
+        active: boolean;
+        severity: SignalSeverity;
+        summary: string;
+    }[];
     private open;
     private disable;
     private warnOnce;
