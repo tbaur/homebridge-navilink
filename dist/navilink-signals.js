@@ -71,6 +71,8 @@ class NaviLinkSignals {
     warned = new Set();
     /** Signal name for each configured appliance, including collision suffixes. */
     signalFor = new Map();
+    /** Appliances that had a name but no free signal. */
+    unassigned = new Set();
     constructor(writer, log) {
         this.writer = writer;
         this.log = log;
@@ -82,12 +84,17 @@ class NaviLinkSignals {
      * until a status frame arrives.
      */
     syncDevices(devices) {
+        this.unassigned.clear();
+        this.signalFor = assignFaultSignals(devices);
         for (const device of devices) {
             if (faultSlug(device.name) === undefined) {
                 this.warnUnusable(device.name);
             }
+            else if (!this.signalFor.has(device.id)) {
+                this.unassigned.add(device.id);
+                this.warnTaken(device.name);
+            }
         }
-        this.signalFor = assignFaultSignals(devices);
         const current = new Set(this.signalFor.values());
         for (const row of this.listedSignals()) {
             if (!row.signal.startsWith(FAULT_PREFIX) || !row.active || current.has(row.signal)) {
@@ -100,9 +107,33 @@ class NaviLinkSignals {
             });
         }
     }
+    /**
+     * Resolve every active signal.
+     *
+     * Used when the user turns signals off. A restart with the setting on must
+     * not do this, or a lockout that is still in progress would resolve and
+     * open again.
+     */
+    clearActive() {
+        for (const row of this.listedSignals()) {
+            if (!row.active) {
+                continue;
+            }
+            this.writer.write(row.signal, {
+                active: false,
+                severity: row.severity,
+                summary: row.summary.length > 0 ? row.summary : FAULT_SUMMARY_FALLBACK,
+            });
+        }
+    }
     /** Record whether this appliance's latest status frame has an error code. */
     setFault(deviceId, name, isActive) {
-        const signal = this.signalFor.get(deviceId) ?? faultSignalName(name);
+        if (this.unassigned.has(deviceId)) {
+            this.warnTaken(name);
+            return;
+        }
+        const assigned = this.signalFor.get(deviceId);
+        const signal = assigned ?? (this.signalFor.size === 0 ? faultSignalName(name) : undefined);
         if (signal === undefined) {
             this.warnUnusable(name);
             return;
@@ -136,6 +167,9 @@ class NaviLinkSignals {
     }
     warnUnusable(name) {
         this.warnOnce(`PagerDuty fault signal skipped for ${(0, validators_1.forLog)(name)}; the name has no usable characters`);
+    }
+    warnTaken(name) {
+        this.warnOnce(`PagerDuty fault signal skipped for ${(0, validators_1.forLog)(name)}; its signal name is already in use`);
     }
     warnOnce(message) {
         if (this.warned.has(message)) {
@@ -187,6 +221,9 @@ function assignFaultSignals(devices) {
             ? `${FAULT_PREFIX}${device.slug}.${channel}`
             : `${FAULT_PREFIX}${device.slug}`;
         const signal = uniqueSignal(base, used);
+        if (signal === undefined) {
+            continue;
+        }
         used.add(signal);
         assigned.set(device.id, signal);
     }
@@ -220,16 +257,16 @@ function fitSignal(signal) {
 }
 function uniqueSignal(base, used) {
     const first = fitSignal(base);
-    if (!used.has(first)) {
+    if (first.length > 0 && !used.has(first)) {
         return first;
     }
     for (let suffix = 2; suffix < 100; suffix += 1) {
         const tail = `.${suffix}`;
         const stem = fitSignal(base.slice(0, MAX_SIGNAL_LENGTH - tail.length));
         const candidate = `${stem}${tail}`;
-        if (!used.has(candidate)) {
+        if (candidate.length > 0 && !used.has(candidate)) {
             return candidate;
         }
     }
-    return first;
+    return undefined;
 }

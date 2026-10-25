@@ -35,7 +35,12 @@ class MemoryWriter {
   failList = false
 
   write(signal: string, state: SignalState): void {
-    this.known.set(signal, { signal, active: state.active, summary: state.summary })
+    this.known.set(signal, {
+      signal,
+      active: state.active,
+      severity: state.severity,
+      summary: state.summary,
+    })
     this.writes.push({ signal, state: { ...state } })
   }
 
@@ -214,6 +219,47 @@ describe('NaviLinkSignals', () => {
     expect(writer.writes).toEqual([])
     expect(warn).toHaveBeenCalledTimes(1)
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('no usable characters'))
+  })
+
+  it('clears every active signal and leaves an inactive one', () => {
+    signals.setFault(BOILER_ID, 'Boiler', true)
+    signals.setAuthenticationRejected(true)
+    signals.setFault(HEATER_ID, 'Heater', false)
+    writer.writes.length = 0
+
+    signals.clearActive()
+
+    expect(writer.writes).toEqual([
+      {
+        signal: 'fault.boiler',
+        state: {
+          active: false,
+          severity: 'critical',
+          summary: 'Navien Boiler is reporting a fault',
+        },
+      },
+      {
+        signal: SIGNAL_AUTH_FAILED,
+        state: { active: false, severity: 'error', summary: AUTH_SUMMARY },
+      },
+    ])
+  })
+
+  it('does not reuse a signal name when every suffix is taken', () => {
+    const name = 'A'.repeat(70)
+    const devices = Array.from({ length: 100 }, (_, index) => ({
+      id: `${(index + 1).toString(16).padStart(12, '0')}:1`,
+      name,
+    }))
+    signals.syncDevices(devices)
+    for (const device of devices) {
+      signals.setFault(device.id, device.name, true)
+    }
+
+    const written = writer.writes.map((write) => write.signal)
+    expect(written).toHaveLength(99)
+    expect(new Set(written).size).toBe(written.length)
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('already in use'))
   })
 
   it('close does not clear a signal', () => {

@@ -15,7 +15,7 @@
 
 import { parseDeviceId } from './api/identity'
 import { PagerDutySignals } from './pagerduty-signals'
-import type { PagerDutySignalsOptions, SignalState } from './pagerduty-signals'
+import type { PagerDutySignalsOptions, SignalSeverity, SignalState } from './pagerduty-signals'
 import { forLog } from './utils/validators'
 
 /** Logged once, with the pattern rather than each appliance name. */
@@ -40,6 +40,7 @@ const MAX_SLUG_LENGTH = MAX_SIGNAL_LENGTH - FAULT_PREFIX.length
 export interface ListedSignal {
   signal: string
   active: boolean
+  severity: SignalSeverity
   summary: string
 }
 
@@ -97,6 +98,9 @@ export class NaviLinkSignals {
   /** Signal name for each configured appliance, including collision suffixes. */
   private signalFor = new Map<string, string>()
 
+  /** Appliances that had a name but no free signal. */
+  private readonly unassigned = new Set<string>()
+
   constructor(
     writer: SignalWriter,
     log: { warn(message: string): void },
@@ -112,12 +116,16 @@ export class NaviLinkSignals {
    * until a status frame arrives.
    */
   syncDevices(devices: readonly { id: string; name: string }[]): void {
+    this.unassigned.clear()
+    this.signalFor = assignFaultSignals(devices)
     for (const device of devices) {
       if (faultSlug(device.name) === undefined) {
         this.warnUnusable(device.name)
+      } else if (!this.signalFor.has(device.id)) {
+        this.unassigned.add(device.id)
+        this.warnTaken(device.name)
       }
     }
-    this.signalFor = assignFaultSignals(devices)
     const current = new Set(this.signalFor.values())
     for (const row of this.listedSignals()) {
       if (!row.signal.startsWith(FAULT_PREFIX) || !row.active || current.has(row.signal)) {
@@ -131,9 +139,34 @@ export class NaviLinkSignals {
     }
   }
 
+  /**
+   * Resolve every active signal.
+   *
+   * Used when the user turns signals off. A restart with the setting on must
+   * not do this, or a lockout that is still in progress would resolve and
+   * open again.
+   */
+  clearActive(): void {
+    for (const row of this.listedSignals()) {
+      if (!row.active) {
+        continue
+      }
+      this.writer.write(row.signal, {
+        active: false,
+        severity: row.severity,
+        summary: row.summary.length > 0 ? row.summary : FAULT_SUMMARY_FALLBACK,
+      })
+    }
+  }
+
   /** Record whether this appliance's latest status frame has an error code. */
   setFault(deviceId: string, name: string, isActive: boolean): void {
-    const signal = this.signalFor.get(deviceId) ?? faultSignalName(name)
+    if (this.unassigned.has(deviceId)) {
+      this.warnTaken(name)
+      return
+    }
+    const assigned = this.signalFor.get(deviceId)
+    const signal = assigned ?? (this.signalFor.size === 0 ? faultSignalName(name) : undefined)
     if (signal === undefined) {
       this.warnUnusable(name)
       return
@@ -173,6 +206,12 @@ export class NaviLinkSignals {
   private warnUnusable(name: string): void {
     this.warnOnce(
       `PagerDuty fault signal skipped for ${forLog(name)}; the name has no usable characters`,
+    )
+  }
+
+  private warnTaken(name: string): void {
+    this.warnOnce(
+      `PagerDuty fault signal skipped for ${forLog(name)}; its signal name is already in use`,
     )
   }
 
@@ -230,6 +269,9 @@ function assignFaultSignals(
       ? `${FAULT_PREFIX}${device.slug}.${channel}`
       : `${FAULT_PREFIX}${device.slug}`
     const signal = uniqueSignal(base, used)
+    if (signal === undefined) {
+      continue
+    }
     used.add(signal)
     assigned.set(device.id, signal)
   }
@@ -264,18 +306,18 @@ function fitSignal(signal: string): string {
   return signal.slice(0, MAX_SIGNAL_LENGTH).replace(/[.-]+$/g, '')
 }
 
-function uniqueSignal(base: string, used: ReadonlySet<string>): string {
+function uniqueSignal(base: string, used: ReadonlySet<string>): string | undefined {
   const first = fitSignal(base)
-  if (!used.has(first)) {
+  if (first.length > 0 && !used.has(first)) {
     return first
   }
   for (let suffix = 2; suffix < 100; suffix += 1) {
     const tail = `.${suffix}`
     const stem = fitSignal(base.slice(0, MAX_SIGNAL_LENGTH - tail.length))
     const candidate = `${stem}${tail}`
-    if (!used.has(candidate)) {
+    if (candidate.length > 0 && !used.has(candidate)) {
       return candidate
     }
   }
-  return first
+  return undefined
 }

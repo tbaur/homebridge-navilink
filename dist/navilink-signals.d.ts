@@ -12,7 +12,7 @@
  * fault still in the store under a name that is no longer configured is
  * cleared from the store itself, so this plugin keeps no list of its own.
  */
-import type { PagerDutySignalsOptions, SignalState } from './pagerduty-signals';
+import type { PagerDutySignalsOptions, SignalSeverity, SignalState } from './pagerduty-signals';
 /** Logged once, with the pattern rather than each appliance name. */
 export declare const PAGERDUTY_STARTUP_LOG = "homebridge-pagerduty support is enabled (fault.<name>, auth-failed)";
 export declare const SIGNAL_AUTH_FAILED = "auth-failed";
@@ -20,6 +20,7 @@ export declare const SIGNAL_AUTH_FAILED = "auth-failed";
 export interface ListedSignal {
     signal: string;
     active: boolean;
+    severity: SignalSeverity;
     summary: string;
 }
 /** The subset of the store writer this class uses. */
@@ -57,6 +58,8 @@ export declare class NaviLinkSignals {
     private readonly warned;
     /** Signal name for each configured appliance, including collision suffixes. */
     private signalFor;
+    /** Appliances that had a name but no free signal. */
+    private readonly unassigned;
     constructor(writer: SignalWriter, log: {
         warn(message: string): void;
     });
@@ -70,6 +73,14 @@ export declare class NaviLinkSignals {
         id: string;
         name: string;
     }[]): void;
+    /**
+     * Resolve every active signal.
+     *
+     * Used when the user turns signals off. A restart with the setting on must
+     * not do this, or a lockout that is still in progress would resolve and
+     * open again.
+     */
+    clearActive(): void;
     /** Record whether this appliance's latest status frame has an error code. */
     setFault(deviceId: string, name: string, isActive: boolean): void;
     /** Record whether NaviLink has rejected the account and stopped sign-in. */
@@ -78,6 +89,7 @@ export declare class NaviLinkSignals {
     close(): void;
     private listedSignals;
     private warnUnusable;
+    private warnTaken;
     private warnOnce;
 }
 /** Build the signals for this plugin, backed by the homebridge-pagerduty store. */

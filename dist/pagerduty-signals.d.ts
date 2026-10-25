@@ -37,6 +37,7 @@ export declare class PagerDutySignals {
     list(): readonly {
         signal: string;
         active: boolean;
+        severity: SignalSeverity;
         summary: string;
     }[];
     private open;

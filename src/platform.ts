@@ -136,6 +136,9 @@ export class NaviLinkPlatform implements DynamicPlatformPlugin, AccessoryHost {
   /** The startup line is once per process, including a second call to start. */
   private hasAnnouncedPagerDuty = false
 
+  /** The missing-storage warning is once per process. */
+  private hasWarnedMissingSignalStorage = false
+
   private readonly platformConfig: NaviLinkPlatformConfig
 
   private readonly diagnostics: DiagnosticsCollector
@@ -263,12 +266,21 @@ export class NaviLinkPlatform implements DynamicPlatformPlugin, AccessoryHost {
   /**
    * Open PagerDuty signals when the user asked for them.
    *
-   * The log line comes before sign-in, so it is still there when sign-in
-   * then fails. Current fault state is not written here: that waits for a
-   * status frame, so a restart during a lockout does not resolve the page.
+   * The log line comes before sign-in, and only once a storage directory is
+   * known. Current fault state is not written here: that waits for a status
+   * frame, so a restart during a lockout does not resolve the page.
+   *
+   * Turning the setting off clears active rows. A restart with the setting
+   * on does not, or a page that is still true would resolve and open again.
    */
   private openPagerDuty(devices: readonly ResolvedDevice[]): void {
     if (!this.options.pagerdutySignals) {
+      this.retirePagerDuty()
+      return
+    }
+    const storagePath = this.storagePathForSignals()
+    if (storagePath === undefined) {
+      this.warnMissingSignalStorage()
       return
     }
     if (!this.hasAnnouncedPagerDuty) {
@@ -276,11 +288,6 @@ export class NaviLinkPlatform implements DynamicPlatformPlugin, AccessoryHost {
       this.log.info(PAGERDUTY_STARTUP_LOG)
     }
     if (this.signals === undefined) {
-      const storagePath = this.api.user.storagePath()
-      if (storagePath.length === 0) {
-        this.log.warn('PagerDuty signals need a Homebridge storage directory; not writing signals')
-        return
-      }
       this.signals = createNaviLinkSignals({
         plugin: PLUGIN_NAME,
         storagePath,
@@ -288,6 +295,41 @@ export class NaviLinkPlatform implements DynamicPlatformPlugin, AccessoryHost {
       })
     }
     this.signals.syncDevices(devices)
+  }
+
+  /** Resolve every active signal. Leaves the store alone when it is not there. */
+  private retirePagerDuty(): void {
+    const storagePath = this.storagePathForSignals()
+    if (storagePath === undefined) {
+      return
+    }
+    const signals = createNaviLinkSignals({
+      plugin: PLUGIN_NAME,
+      storagePath,
+      log: this.log,
+    })
+    try {
+      signals.clearActive()
+    } finally {
+      signals.close()
+    }
+  }
+
+  private storagePathForSignals(): string | undefined {
+    try {
+      const storagePath = this.api.user.storagePath()
+      return storagePath.length === 0 ? undefined : storagePath
+    } catch {
+      return undefined
+    }
+  }
+
+  private warnMissingSignalStorage(): void {
+    if (this.hasWarnedMissingSignalStorage) {
+      return
+    }
+    this.hasWarnedMissingSignalStorage = true
+    this.log.warn('PagerDuty signals need a Homebridge storage directory; not writing signals')
   }
 
   /** A status frame is the first moment a fault is known, tile or no tile. */

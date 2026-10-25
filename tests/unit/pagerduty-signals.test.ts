@@ -137,8 +137,8 @@ describeWithSqlite('PagerDutySignals', () => {
     other.close()
 
     expect(signals.list()).toEqual([
-      { signal: 'auth-failed', active: false, summary: 'Sign-in rejected' },
-      { signal: 'fault.boiler', active: true, summary: 'Navien Boiler is reporting a fault' },
+      { signal: 'auth-failed', active: false, severity: 'error', summary: 'Sign-in rejected' },
+      { signal: 'fault.boiler', active: true, severity: 'critical', summary: 'Navien Boiler is reporting a fault' },
     ])
   })
 })

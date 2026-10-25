@@ -139,7 +139,7 @@ function fakeApi(storagePath?: string): FakeApi {
     registerPlatform: jest.fn(),
     user: {
       storagePath: () => {
-        if (storagePath === undefined || storagePath.length === 0) {
+        if (storagePath === undefined) {
           throw new Error('storagePath was not set')
         }
         return storagePath
@@ -651,6 +651,20 @@ describe('PagerDuty signals', () => {
     expect(built.log.calls.filter((line) => line.includes(startupLine))).toHaveLength(1)
   })
 
+  it('warns once and does not claim support when there is no storage directory', () => {
+    const built = build({
+      storagePath: '',
+      config: config({ options: { pagerdutySignals: true } }),
+    })
+
+    expect(built.log.calls.some((line) => line.includes(startupLine))).toBe(false)
+    expect(built.log.calls.filter((line) => line.includes('storage directory'))).toEqual([
+      'warn PagerDuty signals need a Homebridge storage directory; not writing signals',
+    ])
+    built.api.launch()
+    expect(built.log.calls.filter((line) => line.includes('storage directory'))).toHaveLength(1)
+  })
+
   it('does not log or write when configuration is unusable', () => {
     const built = build({
       storagePath,
@@ -751,6 +765,73 @@ describePlatformRows('PagerDuty signal rows', () => {
 
     built.session().options.onAuthentication?.('accepted')
     expect(readRows()[0]?.active).toBe(0)
+  })
+
+  it('clears active signals when the setting is turned off and does not open them again', () => {
+    const seeder = new PagerDutySignals({
+      plugin: PLUGIN_NAME,
+      storagePath,
+      log: { warn: () => undefined },
+    })
+    seeder.write('fault.boiler', {
+      active: true,
+      severity: 'critical',
+      summary: 'Navien Boiler is reporting a fault',
+    })
+    seeder.write('auth-failed', {
+      active: true,
+      severity: 'error',
+      summary: 'NaviLink rejected the account email or password. Sign-in has stopped until it is corrected in Homebridge.',
+    })
+    seeder.close()
+
+    const built = build({ storagePath })
+    built.session().options.onAuthentication?.('rejected')
+    built.session().emitObservation(DEVICE_ID, observation({
+      readings: { errorCode: 12, subErrorCode: 0 },
+    }))
+
+    expect(built.log.calls.some((line) => line.includes('homebridge-pagerduty support'))).toBe(false)
+    expect(readRows()).toEqual([
+      {
+        signal: 'auth-failed',
+        active: 0,
+        severity: 'error',
+        summary: 'NaviLink rejected the account email or password. Sign-in has stopped until it is corrected in Homebridge.',
+      },
+      {
+        signal: 'fault.boiler',
+        active: 0,
+        severity: 'critical',
+        summary: 'Navien Boiler is reporting a fault',
+      },
+    ])
+  })
+
+  it('does not clear signals when configuration is unusable', () => {
+    const seeder = new PagerDutySignals({
+      plugin: PLUGIN_NAME,
+      storagePath,
+      log: { warn: () => undefined },
+    })
+    seeder.write('fault.boiler', {
+      active: true,
+      severity: 'critical',
+      summary: 'Navien Boiler is reporting a fault',
+    })
+    seeder.close()
+
+    build({
+      storagePath,
+      config: config({ password: '', options: { pagerdutySignals: true } }),
+    })
+
+    expect(readRows()).toEqual([{
+      signal: 'fault.boiler',
+      active: 1,
+      severity: 'critical',
+      summary: 'Navien Boiler is reporting a fault',
+    }])
   })
 
   it('clears a fault for an appliance that left the configuration and leaves it on shutdown', async () => {

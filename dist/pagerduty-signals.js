@@ -76,12 +76,18 @@ class PagerDutySignals {
         }
         try {
             const db = this.db ?? this.open();
-            const rows = db.prepare('SELECT signal, active, summary FROM signals WHERE plugin = ? ORDER BY signal').all(this.options.plugin);
-            return rows.map((row) => ({
-                signal: row.signal,
-                active: row.active === 1,
-                summary: row.summary,
-            }));
+            const rows = db.prepare('SELECT signal, active, severity, summary FROM signals WHERE plugin = ? ORDER BY signal').all(this.options.plugin);
+            return rows.flatMap((row) => {
+                if (!isSeverity(row.severity)) {
+                    return [];
+                }
+                return [{
+                        signal: row.signal,
+                        active: row.active === 1,
+                        severity: row.severity,
+                        summary: row.summary,
+                    }];
+            });
         }
         catch (error) {
             this.warnOnce(`PagerDuty signals could not be read: ${error instanceof Error ? error.message : String(error)}`);
@@ -127,3 +133,6 @@ class PagerDutySignals {
     }
 }
 exports.PagerDutySignals = PagerDutySignals;
+function isSeverity(value) {
+    return value === 'info' || value === 'warning' || value === 'error' || value === 'critical';
+}
