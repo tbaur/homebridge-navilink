@@ -139,6 +139,7 @@ describe('DiagnosticsCollector', () => {
       structuredLogs: true,
       readOnly: false,
       allowPowerOff: false,
+      pagerdutySignals: false,
       accessoryPrefix: false,
       devices: 1,
     })

@@ -301,6 +301,7 @@ class NaviLinkSession {
         this.clearTimers();
         this.dropConnection();
         const tokens = await this.rest.signIn(this.options.account.email, this.options.account.password);
+        this.reportAuthentication('accepted');
         this.expiresAt = tokens.expiresAt;
         if (this.lastRefreshAt !== undefined) {
             this.options.metrics?.sessionRefresh();
@@ -509,7 +510,17 @@ class NaviLinkSession {
         this.clearTimers();
         this.dropConnection();
         this.log.error(`${error.message}; sign-in stopped`);
+        this.reportAuthentication('rejected');
         this.notifyUnreachable(error);
+    }
+    /** Tell the platform, and keep a thrown listener from stopping the session. */
+    reportAuthentication(result) {
+        try {
+            this.options.onAuthentication?.(result);
+        }
+        catch (error) {
+            this.log.debug(`an authentication listener threw: ${(0, utils_1.describeError)(error)}`);
+        }
     }
     /** True when the session has given up for a reason the user must fix. */
     get hasStoppedPermanently() {

@@ -32,6 +32,7 @@ export interface ResolvedPlatformOptions {
     diagnosticsInterval: number;
     structuredLogs: boolean;
     accessoryPrefix: string;
+    pagerdutySignals: boolean;
 }
 /** The account, once it is known to be usable. */
 export interface ResolvedAccount {

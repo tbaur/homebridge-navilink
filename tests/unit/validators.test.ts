@@ -439,6 +439,7 @@ describe('validateConfig', () => {
       diagnosticsInterval: 0,
       structuredLogs: false,
       accessoryPrefix: '',
+      pagerdutySignals: false,
     })
   })
 
@@ -451,6 +452,7 @@ describe('validateConfig', () => {
         diagnosticsInterval: 300,
         structuredLogs: true,
         accessoryPrefix: 'Zone One',
+        pagerdutySignals: true,
       },
     }))
 
@@ -461,6 +463,7 @@ describe('validateConfig', () => {
       diagnosticsInterval: 300,
       structuredLogs: true,
       accessoryPrefix: 'Zone One',
+      pagerdutySignals: true,
     })
   })
 

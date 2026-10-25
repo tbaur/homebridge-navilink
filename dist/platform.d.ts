@@ -44,6 +44,10 @@ export declare class NaviLinkPlatform implements DynamicPlatformPlugin, Accessor
     private readonly devices;
     private options;
     private session;
+    /** PagerDuty signals, present only when the user turned them on. */
+    private signals;
+    /** The startup line is once per process, including a second call to start. */
+    private hasAnnouncedPagerDuty;
     private readonly platformConfig;
     private readonly diagnostics;
     private diagnosticsTimer;
@@ -60,6 +64,16 @@ export declare class NaviLinkPlatform implements DynamicPlatformPlugin, Accessor
     configureAccessory(accessory: PlatformAccessory): void;
     private start;
     private stop;
+    /**
+     * Open PagerDuty signals when the user asked for them.
+     *
+     * The log line comes before sign-in, so it is still there when sign-in
+     * then fails. Current fault state is not written here: that waits for a
+     * status frame, so a restart during a lockout does not resolve the page.
+     */
+    private openPagerDuty;
+    /** A status frame is the first moment a fault is known, tile or no tile. */
+    private noteFault;
     /** Keep cached accessories registered when configuration is unusable. */
     private keepRestoredRegistered;
     /**

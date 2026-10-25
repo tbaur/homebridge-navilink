@@ -52,6 +52,7 @@ interface Built {
   observed: { deviceId: string; observation: ChannelObservation; reason: RefreshReason }[]
   unreachable: unknown[]
   stale: string[]
+  authentication: ('accepted' | 'rejected')[]
   setNow(value: number): void
 }
 
@@ -65,6 +66,7 @@ function build(overrides: {
   const rest = overrides.rest ?? fakeRest()
   let connection: FakeConnection | undefined
   let now = NOW
+  const authentication: Built['authentication'] = []
 
   const session = new NaviLinkSession({
     log,
@@ -78,6 +80,9 @@ function build(overrides: {
     },
     now: () => now,
     random: () => 0.5,
+    onAuthentication: (result) => {
+      authentication.push(result)
+    },
     ...(overrides.metrics === undefined ? {} : { metrics: overrides.metrics }),
   })
 
@@ -103,6 +108,7 @@ function build(overrides: {
     observed,
     unreachable,
     stale,
+    authentication,
     setNow: (value) => {
       now = value
     },
@@ -131,6 +137,7 @@ afterEach(() => {
 describe('establishing a session', () => {
   it('signs in, lists, connects and then asks what the appliance is', async () => {
     const built = await started()
+    expect(built.authentication).toEqual(['accepted'])
     expect(built.rest.calls.signIn).toHaveLength(1)
     expect(built.rest.calls.listDevices).toBe(1)
     expect(built.connection.connectCalls).toBe(1)
@@ -238,6 +245,7 @@ describe('a rejected credential', () => {
     await drain()
 
     expect(built.session.hasStoppedPermanently).toBe(true)
+    expect(built.authentication).toEqual(['rejected'])
     expect(rest.calls.signIn).toHaveLength(1)
   })
 
@@ -261,6 +269,7 @@ describe('a rejected credential', () => {
     built.session.start()
     await drain()
     expect(built.session.hasStoppedPermanently).toBe(false)
+    expect(built.authentication).not.toContain('rejected')
     expect(built.unreachable).toHaveLength(1)
     await built.session.stop()
   })

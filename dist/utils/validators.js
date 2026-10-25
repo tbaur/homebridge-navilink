@@ -293,6 +293,7 @@ function validateConfig(config) {
         diagnosticsInterval: 0,
         structuredLogs: false,
         accessoryPrefix: '',
+        pagerdutySignals: false,
     };
     if (typeof config !== 'object' || config === null) {
         return { errors: ['platform configuration is missing'], warnings, account: undefined, devices: [], options: defaults };
@@ -306,6 +307,7 @@ function validateConfig(config) {
         diagnosticsInterval: resolveDiagnosticsIntervalSec(platform.options?.diagnosticsInterval, warnings),
         structuredLogs: platform.options?.structuredLogs === true,
         accessoryPrefix: resolveAccessoryPrefix(platform.options?.accessoryPrefix, warnings),
+        pagerdutySignals: platform.options?.pagerdutySignals === true,
     };
     const rawDevices = platform.devices;
     if (rawDevices === undefined) {

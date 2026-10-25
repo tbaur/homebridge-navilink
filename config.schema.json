@@ -77,6 +77,12 @@
             "maxLength": 64,
             "examples": ["Zone One"],
             "description": "HomeKit tiles become this plus the accessory: \"Zone One Hot Water\", \"Zone One Heating\", and so on. Leave blank to use each appliance's own name. Changing it renames the tiles; it does not detach rooms or automations."
+          },
+          "pagerdutySignals": {
+            "title": "Send Signals to PagerDuty",
+            "type": "boolean",
+            "default": false,
+            "description": "Write this plugin's alert conditions to homebridge-pagerduty's signal store. Then allow homebridge-navilink to page in homebridge-pagerduty's settings. Needs Node 22.13 or later."
           }
         }
       },
