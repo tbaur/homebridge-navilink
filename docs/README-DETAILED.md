@@ -5,6 +5,7 @@ Everything the [README](../README.md) summarises, in full.
 ## Table of Contents
 
 - [Scope](#scope)
+- [Supported devices](#supported-devices)
 - [Accessories in detail](#accessories-in-detail)
 - [Reliability in detail](#reliability-in-detail)
 - [Full configuration reference](#full-configuration-reference)
@@ -12,6 +13,7 @@ Everything the [README](../README.md) summarises, in full.
 - [Reading the log](#reading-the-log)
 - [Apple Shortcuts](#apple-shortcuts)
 - [Roadmap](#roadmap)
+- [PagerDuty](#pagerduty)
 - [Troubleshooting](#troubleshooting)
 - [Security](#security)
 - [Quality](#quality)
@@ -24,6 +26,26 @@ This plugin exposes the parts of a Navien appliance that HomeKit can express as 
 Scheduling is the clearest example. The appliance has a weekly programme and the protocol has a command to set it, but HomeKit has no way to render a schedule and no vocabulary for one. A second scheduler would disagree with the one in the NaviLink app. That is worse than not having it.
 
 HomeKit is good at noticing. The NaviLink app is not. A contact sensor that opens when the boiler faults will tell you before the shower does.
+
+## Supported devices
+
+Any Navien appliance that the NaviLink app controls. The cloud interface is the same for all of them; what differs is which capabilities an appliance reports.
+
+| Verified against | Notes |
+| --- | --- |
+| **NCB-240E (NG)** | Combi: hot water and space heating, firmware 4352 |
+
+Other families are decoded from the same table the NaviLink app uses and are expected to work, but nobody has confirmed them here:
+
+| Family | Expected |
+| --- | --- |
+| **NPE, NPE2, NPN** | Tankless water heaters. Hot water only; the heating thermostat disables itself |
+| **NCB-H** | Combi with a buffer tank |
+| **NHB** | Boiler. Space heating only |
+| **NFB, NFC** | Boilers with hot water and space heating |
+| **NVW** | Water heater with a tank |
+
+If yours is not listed, it will most likely work. Please open an issue with the output of `node scripts/capture-fixture.js --redact` either way, so the table can say so with confidence.
 
 ## Accessories in detail
 
@@ -114,6 +136,8 @@ An appliance with no probe reports `0`. The plugin treats that as absent, not as
 
 ## Full configuration reference
 
+Only one `NaviLink` platform block is supported. It can hold as many appliances as the account owns.
+
 ### Platform options
 
 | Key | Type | Default | Description |
@@ -128,7 +152,7 @@ An appliance with no probe reports `0`. The plugin treats that as absent, not as
 | `options.diagnosticsInterval` | integer | `0` | Health heartbeat in the log, in seconds. `0` is off; otherwise `30`–`3600` |
 | `options.structuredLogs` | boolean | `false` | With diagnostics, also emit each report as JSON |
 | `options.accessoryPrefix` | string | *(blank)* | HomeKit names become `Prefix Hot Water`, `Prefix Heating`, and so on. Blank uses each appliance's name. Two appliances with the same prefix keep the appliance name in the tile so Siri can tell them apart |
-| `options.pagerdutySignals` | boolean | `false` | Write `fault.<gateway>.<channel>` and `auth-failed` to homebridge-pagerduty. See [PagerDuty](#pagerduty) |
+| `options.pagerdutySignals` | boolean | `false` | Write `fault.<name>` and `auth-failed` to homebridge-pagerduty. See [PagerDuty](#pagerduty) |
 
 A trailing space on the password is trimmed. A password manager will happily paste one. The trim is mentioned once in the log. Without that, the cloud rejects a password that looks right and the failure is unexplainable.
 
@@ -313,10 +337,12 @@ Each condition below then opens a PagerDuty alert while it is present, and resol
 
 | Signal | Severity | Active when |
 | --- | --- | --- |
-| `fault.<gateway>.<channel>` | critical | That appliance's latest status frame has a non-zero error code. One signal per configured appliance, whether or not the HomeKit fault tile is on. The error code stays in the Homebridge log |
+| `fault.<name>` | critical | That appliance's latest status frame has a non-zero error code. `<name>` is the appliance's name from the configuration, in lowercase. A space, or any other character the signal store does not allow, becomes a hyphen. One signal per configured appliance, whether or not the HomeKit fault tile is on. The error code stays in the Homebridge log |
 | `auth-failed` | error | NaviLink rejected the email or password and sign-in has stopped. A network failure, an open circuit breaker, or a rejected session token does not turn this on |
 
 A fault is written when the first status frame for that appliance arrives, and again when the code changes. It is not written clear before that frame, so a restart during a lockout does not resolve the page and open it again. Shutdown does not clear a signal. An appliance removed from the configuration is cleared on the next start with the setting on. A configuration that fails validation does not change the store.
+
+The signal follows the name in the configuration. `NCB-240E` is `fault.ncb-240e`. Renaming the appliance clears the old signal on the next start and opens a new one. homebridge-pagerduty stores your message and severity under the signal name, so the new name starts from the defaults. Two appliances whose names reduce to the same signal get the channel appended, as in `fault.boiler.1`.
 
 ## Troubleshooting
 

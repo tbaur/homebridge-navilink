@@ -8,21 +8,19 @@
  * homebridge-pagerduty signals.
  *
  * The store writer is the copied module. This file decides which conditions
- * are worth a page, and remembers which appliances were configured so a
- * removed one can be cleared. The remembered file is this plugin's own. It
- * is not the signal store, and it is never logged.
+ * are worth a page. A fault signal is the appliance's name from config. A
+ * fault still in the store under a name that is no longer configured is
+ * cleared from the store itself, so this plugin keeps no list of its own.
  */
-
-import { chmodSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
 
 import { parseDeviceId } from './api/identity'
 import { PagerDutySignals } from './pagerduty-signals'
 import type { PagerDutySignalsOptions, SignalState } from './pagerduty-signals'
+import { forLog } from './utils/validators'
 
-/** Logged once, with the pattern rather than each gateway. */
+/** Logged once, with the pattern rather than each appliance name. */
 export const PAGERDUTY_STARTUP_LOG =
-  'homebridge-pagerduty support is enabled (fault.<gateway>.<channel>, auth-failed)'
+  'homebridge-pagerduty support is enabled (fault.<name>, auth-failed)'
 
 export const SIGNAL_AUTH_FAILED = 'auth-failed'
 
@@ -31,38 +29,40 @@ const AUTH_FAILED_SUMMARY =
 
 const FAULT_SUMMARY_FALLBACK = 'Navien appliance is reporting a fault'
 
-/** Directory under Homebridge storage for the remembered appliance list. */
-const REMEMBERED_DIR = 'homebridge-navilink'
+/** Signal names the store will accept: lowercase, digits, and . _ - */
+const MAX_SIGNAL_LENGTH = 64
 
-const REMEMBERED_FILE = 'pagerduty-devices.json'
+const FAULT_PREFIX = 'fault.'
 
-const CONTROL_CHARACTERS = /[\u0000-\u001F\u007F]+/g
+const MAX_SLUG_LENGTH = MAX_SIGNAL_LENGTH - FAULT_PREFIX.length
+
+/** One row this plugin has already written. */
+export interface ListedSignal {
+  signal: string
+  active: boolean
+  summary: string
+}
 
 /** The subset of the store writer this class uses. */
 export interface SignalWriter {
   write(signal: string, state: SignalState): void
+  list(): readonly ListedSignal[]
   close(): void
 }
 
-/** One configured appliance, as remembered between starts. */
-interface RememberedDevice {
-  id: string
-  name: string
-}
-
 /**
- * The signal name for one appliance.
+ * The signal name for one appliance, from its configured name.
  *
- * The device id is `{mac}:{channel}`. A signal name cannot contain a colon,
- * so the separator becomes a dot. Undefined when the id is not one this
- * plugin would configure.
+ * The store only accepts lowercase letters, digits, `.`, `_` and `-`. A space
+ * or anything else becomes a hyphen. Undefined when the name has none of the
+ * accepted characters.
  */
-export function faultSignalName(deviceId: string): string | undefined {
-  const parsed = parseDeviceId(deviceId)
-  if (parsed === undefined) {
+export function faultSignalName(name: string): string | undefined {
+  const slug = faultSlug(name)
+  if (slug === undefined) {
     return undefined
   }
-  return `fault.${parsed.mac}.${parsed.channel}`
+  return `${FAULT_PREFIX}${slug}`
 }
 
 /**
@@ -72,16 +72,11 @@ export function faultSignalName(deviceId: string): string | undefined {
  * because a saved PagerDuty message is fixed text and would keep an old code.
  */
 export function faultSummary(name: string): string {
-  const cleaned = name.replace(CONTROL_CHARACTERS, ' ').replace(/\s+/g, ' ').trim()
+  const cleaned = name.replace(/[\u0000-\u001F\u007F]+/g, ' ').replace(/\s+/g, ' ').trim()
   if (cleaned.length === 0) {
     return FAULT_SUMMARY_FALLBACK
   }
   return `Navien ${cleaned} is reporting a fault`
-}
-
-/** Where the remembered appliance list lives. Local storage, not the repo. */
-export function rememberedDevicesPath(storagePath: string): string {
-  return join(storagePath, REMEMBERED_DIR, REMEMBERED_FILE)
 }
 
 /**
@@ -95,42 +90,52 @@ export function rememberedDevicesPath(storagePath: string): string {
 export class NaviLinkSignals {
   private readonly writer: SignalWriter
 
-  private readonly storagePath: string
-
   private readonly log: { warn(message: string): void }
 
   private readonly warned = new Set<string>()
 
+  /** Signal name for each configured appliance, including collision suffixes. */
+  private signalFor = new Map<string, string>()
+
   constructor(
     writer: SignalWriter,
-    storagePath: string,
     log: { warn(message: string): void },
   ) {
     this.writer = writer
-    this.storagePath = storagePath
     this.log = log
   }
 
   /**
-   * Clear fault signals for appliances that are no longer configured, then
-   * remember the current set. Does not write the current appliances: their
-   * fault state is not known until a status frame arrives.
+   * Clear fault signals whose names are no longer configured.
+   *
+   * Does not write the current appliances: their fault state is not known
+   * until a status frame arrives.
    */
   syncDevices(devices: readonly { id: string; name: string }[]): void {
-    const current = devices.map((device) => ({ id: device.id, name: device.name }))
-    const currentIds = new Set(current.map((device) => device.id))
-    for (const previous of this.readRemembered()) {
-      if (!currentIds.has(previous.id)) {
-        this.setFault(previous.id, previous.name, false)
+    for (const device of devices) {
+      if (faultSlug(device.name) === undefined) {
+        this.warnUnusable(device.name)
       }
     }
-    this.writeRemembered(current)
+    this.signalFor = assignFaultSignals(devices)
+    const current = new Set(this.signalFor.values())
+    for (const row of this.listedSignals()) {
+      if (!row.signal.startsWith(FAULT_PREFIX) || !row.active || current.has(row.signal)) {
+        continue
+      }
+      this.writer.write(row.signal, {
+        active: false,
+        severity: 'critical',
+        summary: row.summary.length > 0 ? row.summary : FAULT_SUMMARY_FALLBACK,
+      })
+    }
   }
 
   /** Record whether this appliance's latest status frame has an error code. */
   setFault(deviceId: string, name: string, isActive: boolean): void {
-    const signal = faultSignalName(deviceId)
+    const signal = this.signalFor.get(deviceId) ?? faultSignalName(name)
     if (signal === undefined) {
+      this.warnUnusable(name)
       return
     }
     this.writer.write(signal, {
@@ -154,54 +159,21 @@ export class NaviLinkSignals {
     this.writer.close()
   }
 
-  private readRemembered(): RememberedDevice[] {
-    const file = rememberedDevicesPath(this.storagePath)
-    if (!existsSync(file)) {
-      return []
-    }
+  private listedSignals(): readonly ListedSignal[] {
     try {
-      const parsed: unknown = JSON.parse(readFileSync(file, 'utf8'))
-      const devices = rememberedDevices(parsed)
-      if (devices === undefined) {
-        this.warnOnce(
-          'PagerDuty device list could not be read; removed appliances will not be cleared this start',
-        )
-        return []
-      }
-      return devices
+      return this.writer.list()
     } catch {
       this.warnOnce(
-        'PagerDuty device list could not be read; removed appliances will not be cleared this start',
+        'PagerDuty signals could not be read; removed appliances will not be cleared this start',
       )
       return []
     }
   }
 
-  private writeRemembered(devices: readonly RememberedDevice[]): void {
-    const dir = join(this.storagePath, REMEMBERED_DIR)
-    const file = rememberedDevicesPath(this.storagePath)
-    const temporary = `${file}.tmp`
-    try {
-      mkdirSync(dir, { recursive: true, mode: 0o700 })
-      chmodSync(dir, 0o700)
-      const payload = JSON.stringify({ devices })
-      const fd = openSync(temporary, 'w', 0o600)
-      try {
-        writeFileSync(fd, payload)
-      } finally {
-        closeSync(fd)
-      }
-      chmodSync(temporary, 0o600)
-      renameSync(temporary, file)
-      chmodSync(file, 0o600)
-    } catch {
-      try {
-        unlinkSync(temporary)
-      } catch {
-        // The temporary file may not exist. The warning below is the outcome.
-      }
-      this.warnOnce('PagerDuty device list could not be saved')
-    }
+  private warnUnusable(name: string): void {
+    this.warnOnce(
+      `PagerDuty fault signal skipped for ${forLog(name)}; the name has no usable characters`,
+    )
   }
 
   private warnOnce(message: string): void {
@@ -215,37 +187,95 @@ export class NaviLinkSignals {
 
 /** Build the signals for this plugin, backed by the homebridge-pagerduty store. */
 export function createNaviLinkSignals(options: PagerDutySignalsOptions): NaviLinkSignals {
-  return new NaviLinkSignals(
-    new PagerDutySignals(options),
-    options.storagePath,
-    options.log,
-  )
+  return new NaviLinkSignals(new PagerDutySignals(options), options.log)
+}
+
+/** The part of a name the store will accept, or undefined when nothing is left. */
+function faultSlug(name: string): string | undefined {
+  const slug = name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^[.-]+|[.-]+$/g, '')
+    .slice(0, MAX_SLUG_LENGTH)
+    .replace(/[.-]+$/g, '')
+  if (slug.length === 0 || !/^[a-z0-9]/.test(slug)) {
+    return undefined
+  }
+  return slug
 }
 
 /**
- * The appliance list in the remembered file, or undefined when the file is
- * not that list. A bad entry fails the whole file, so a partial read cannot
- * clear the wrong appliance.
+ * One signal per appliance.
+ *
+ * The name is the key. Two appliances whose names slug the same way get the
+ * channel appended, so each still has its own row. The order follows the
+ * device id, which does not move when the config is reordered.
  */
-function rememberedDevices(value: unknown): RememberedDevice[] | undefined {
-  if (typeof value !== 'object' || value === null) {
-    return undefined
+function assignFaultSignals(
+  devices: readonly { id: string; name: string }[],
+): Map<string, string> {
+  const ready = devices.flatMap((device) => {
+    const slug = faultSlug(device.name)
+    return slug === undefined ? [] : [{ id: device.id, slug }]
+  })
+  const shared = sharedSlugs(ready)
+  const used = new Set<string>()
+  const assigned = new Map<string, string>()
+  const ordered = [...ready].sort((left, right) => compareId(left.id, right.id))
+  for (const device of ordered) {
+    const channel = parseDeviceId(device.id)?.channel
+    const base = shared.has(device.slug) && channel !== undefined
+      ? `${FAULT_PREFIX}${device.slug}.${channel}`
+      : `${FAULT_PREFIX}${device.slug}`
+    const signal = uniqueSignal(base, used)
+    used.add(signal)
+    assigned.set(device.id, signal)
   }
-  const devices = (value as { devices?: unknown }).devices
-  if (!Array.isArray(devices)) {
-    return undefined
-  }
-  const parsed: RememberedDevice[] = []
-  for (const entry of devices) {
-    if (typeof entry !== 'object' || entry === null) {
-      return undefined
+  return assigned
+}
+
+function sharedSlugs(devices: readonly { slug: string }[]): Set<string> {
+  const seen = new Set<string>()
+  const shared = new Set<string>()
+  for (const device of devices) {
+    if (seen.has(device.slug)) {
+      shared.add(device.slug)
+    } else {
+      seen.add(device.slug)
     }
-    const id = (entry as { id?: unknown }).id
-    const name = (entry as { name?: unknown }).name
-    if (typeof id !== 'string' || typeof name !== 'string' || parseDeviceId(id) === undefined) {
-      return undefined
-    }
-    parsed.push({ id, name })
   }
-  return parsed
+  return shared
+}
+
+function compareId(left: string, right: string): number {
+  if (left < right) {
+    return -1
+  }
+  if (left > right) {
+    return 1
+  }
+  return 0
+}
+
+/** Shorten a signal to the column limit without leaving a trailing separator. */
+function fitSignal(signal: string): string {
+  return signal.slice(0, MAX_SIGNAL_LENGTH).replace(/[.-]+$/g, '')
+}
+
+function uniqueSignal(base: string, used: ReadonlySet<string>): string {
+  const first = fitSignal(base)
+  if (!used.has(first)) {
+    return first
+  }
+  for (let suffix = 2; suffix < 100; suffix += 1) {
+    const tail = `.${suffix}`
+    const stem = fitSignal(base.slice(0, MAX_SIGNAL_LENGTH - tail.length))
+    const candidate = `${stem}${tail}`
+    if (!used.has(candidate)) {
+      return candidate
+    }
+  }
+  return first
 }

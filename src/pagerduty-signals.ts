@@ -1,4 +1,4 @@
-import { closeSync, mkdirSync, openSync } from 'node:fs'
+import { closeSync, existsSync, mkdirSync, openSync } from 'node:fs'
 import { join } from 'node:path'
 import type * as Sqlite from 'node:sqlite'
 
@@ -79,6 +79,38 @@ export class PagerDutySignals {
   close(): void {
     this.db?.close()
     this.db = undefined
+  }
+
+  /**
+   * This plugin's rows, or an empty list when the store does not exist yet.
+   *
+   * A removed appliance is cleared from these rows. Nothing is created here,
+   * so a start with nothing to say leaves no store.
+   */
+  list(): readonly { signal: string; active: boolean; summary: string }[] {
+    if (this.isDisabled) {
+      return []
+    }
+    const file = join(this.options.storagePath, STORE_DIR, INTERFACE_ID, STORE_FILE)
+    if (!existsSync(file)) {
+      return []
+    }
+    try {
+      const db = this.db ?? this.open()
+      const rows = db.prepare(
+        'SELECT signal, active, summary FROM signals WHERE plugin = ? ORDER BY signal',
+      ).all(this.options.plugin) as unknown as { signal: string; active: number; summary: string }[]
+      return rows.map((row) => ({
+        signal: row.signal,
+        active: row.active === 1,
+        summary: row.summary,
+      }))
+    } catch (error) {
+      this.warnOnce(
+        `PagerDuty signals could not be read: ${error instanceof Error ? error.message : String(error)}`,
+      )
+      return []
+    }
   }
 
   private open(): Sqlite.DatabaseSync {

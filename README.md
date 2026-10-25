@@ -14,43 +14,19 @@ Scheduling, weekly programmes and commissioning stay in the NaviLink app, which 
 
 ## Features
 
-
-
-### Per appliance
-
 - **Hot water thermostat:** the domestic hot water setpoint, reading the actual outlet temperature
 - **Heating thermostat:** the space-heating flow temperature. This is the boiler's water temperature
 - **Power switch:** on and off, with switching *off* refused by default because it stops central heating
-- **Recirculation switch:** starts the on-demand pump, so hot water reaches the tap without running it first. Only offered where a pump is fitted.
+- **Recirculation switch:** starts the on-demand pump, so hot water reaches the tap without running it first. Only offered where a pump is fitted
 - **Fault sensor:** a contact sensor that opens and logs on an error code, so HomeKit can notify you
 - **Temperature sensors:** hot water in and out, heating flow and return, and the optional outdoor probe
+- **Push, not polling.** A change at the wall controller or in the NaviLink app reaches HomeKit in about a second. A rejected password is never retried
+- **No analytics.** Nothing is sent anywhere except Navien's own service
+- **PagerDuty** *(optional)*: pages through [homebridge-pagerduty](https://github.com/tbaur/homebridge-pagerduty) on a boiler fault or a rejected sign-in. See [setup](docs/README-DETAILED.md#pagerduty)
 
-
-
-### Reliability
-
-- **Push, not polling.** The gateway sends changes as they happen, so a setpoint changed at the wall controller or in the NaviLink app reaches HomeKit in about a second. The poll is only a backstop
-- **A rejected password is never retried.** Repeating a wrong password at a cloud is how an account gets locked. The plugin stops, says so once, and waits for you
-- **Credentials are renewed on a clock,** a few minutes before they expire
-- **A connected socket is not a live appliance.** Readings carry the time they were taken, and a stale one becomes No Response instead
-- **State:** No Response until the appliance has actually been read, and not a value it cannot confirm
-- **Never loses your rooms:** a broken config disables the platform without unregistering anything
-- **A REST circuit breaker** fails fast during a sustained cloud outage. The log is `Circuit breaker CLOSED -> OPEN`, then `HALF_OPEN` and `CLOSED` when it recovers. Firmware reads do not trip it
-
-
-
-### Quality
-
-- **Strict TypeScript,** with `noUncheckedIndexedAccess` and type-aware lint
-- **Tested:** a behavioural Jest suite against fixtures recorded from real hardware, with a guard that fails the build if anything identifying reaches them
-- **No analytics:** nothing is sent anywhere except Navien's own service
-- **One runtime dependency,** Homebridge's own UI helper. The MQTT client is a small in-repo codec, not a `mqtt.js` dependency tree
-
-Every accessory, field and log line is documented in [Detailed documentation](docs/README-DETAILED.md).
+The [detailed documentation](docs/README-DETAILED.md) describes every accessory, setting and log line.
 
 ## Quick Start
-
-
 
 ### 1. Install
 
@@ -59,8 +35,6 @@ Every accessory, field and log line is documented in [Detailed documentation](do
 ```bash
 npm install -g homebridge-navilink
 ```
-
-
 
 ### 2. Prepare your appliance
 
@@ -94,74 +68,15 @@ Or in `config.json`:
 }
 ```
 
-The `id` is your gateway's MAC address and the channel. The settings page writes it for you; finding it by hand is not worth the effort.
-
-See the [full configuration reference](docs/README-DETAILED.md#full-configuration-reference) for every option.
+The `id` is your gateway's MAC address and the channel. The settings page writes it for you. The [configuration reference](docs/README-DETAILED.md#full-configuration-reference) lists every option.
 
 ### 4. Restart Homebridge
 
 Accessories appear in the Home app after restart, showing No Response for the few seconds it takes to sign in and read the first status frame.
 
-## Supported Devices
+## Supported devices
 
-Any Navien appliance that the NaviLink app controls. The cloud interface is the same for all of them; what differs is which capabilities an appliance reports.
-
-
-| Verified against  | Notes                                             |
-| ----------------- | ------------------------------------------------- |
-| **NCB-240E (NG)** | Combi: hot water and space heating, firmware 4352 |
-
-
-Other families are decoded from the same table the NaviLink app uses and are expected to work, but nobody has confirmed them here:
-
-
-| Family             | Expected                                                                       |
-| ------------------ | ------------------------------------------------------------------------------ |
-| **NPE, NPE2, NPN** | Tankless water heaters. Hot water only; the heating thermostat disables itself |
-| **NCB-H**          | Combi with a buffer tank                                                       |
-| **NHB**            | Boiler. Space heating only                                                     |
-| **NFB, NFC**       | Boilers with hot water and space heating                                       |
-| **NVW**            | Water heater with a tank                                                       |
-
-
-If yours is not listed, it will most likely work. Please open an issue with the output of `node scripts/capture-fixture.js --redact` either way, so the table can say so with confidence.
-
-## Configuration Options
-
-Only one `NaviLink` platform block is supported. It can hold as many appliances as the account owns.
-
-
-| Option                        | Required to run | Description                                                                     |
-| ----------------------------- | --------------- | ------------------------------------------------------------------------------- |
-| `name`                        | ✓               | Plugin instance name shown in Homebridge logs                                   |
-| `email`                       | ✓               | Your NaviLink account address. Needed before the plugin signs in                |
-| `password`                    | ✓               | Your NaviLink password. Needed before the plugin signs in                       |
-| `devices`                     | ✓               | List of appliances. Needed before the plugin signs in                           |
-| `options.statusIntervalSec`   |                 | Backstop refresh, 30–3600 seconds (default 120)                                 |
-| `options.readOnly`            |                 | Report everything, change nothing (default false)                               |
-| `options.allowPowerOff`       |                 | Let HomeKit switch the appliance off (default false)                            |
-| `options.diagnosticsInterval` |                 | Seconds between health lines in the log; `0` is off (default), else `30`–`3600` |
-| `options.structuredLogs`      |                 | With diagnostics, also emit a JSON line (default false)                         |
-| `options.accessoryPrefix`     |                 | Prefix for every HomeKit name. Blank uses each appliance's name                 |
-| `options.pagerdutySignals`    |                 | Send alert conditions to homebridge-pagerduty (default off). See [PagerDuty](#pagerduty) |
-
-
-Each entry in `devices[]` takes `id` and `name`, plus an optional `channel` and one flag per accessory: `dhw`, `heating`, `power`, `recirculation`, `fault`, `temperatureSensors` and `outdoorSensor`. The [detailed documentation](docs/README-DETAILED.md#devices-entries) describes each one.
-
-## PagerDuty
-
-This plugin can page through [homebridge-pagerduty](https://github.com/tbaur/homebridge-pagerduty) when something needs attention. It needs Node 22.13 or later.
-
-1. Turn on **Send Signals to PagerDuty** (`options.pagerdutySignals`) in this plugin's settings.
-2. Restart Homebridge.
-3. In homebridge-pagerduty's settings, allow homebridge-navilink to page, save, and restart Homebridge again. [Signals from other plugins](https://github.com/tbaur/homebridge-pagerduty/blob/main/docs/SIGNALS.md#let-a-plugin-page) explains each step and what else you can set for each signal.
-
-Each condition below then opens a PagerDuty alert while it is present, and resolves it when it clears.
-
-| Signal | Severity | Active when |
-| --- | --- | --- |
-| `fault.<gateway>.<channel>` | critical | That appliance's latest status frame has a non-zero error code |
-| `auth-failed` | error | NaviLink rejected the email or password and sign-in has stopped |
+Any Navien appliance that the NaviLink app controls. Confirmed on an NCB-240E (firmware 4352). Other families are decoded from the same table the app uses. The [device table](docs/README-DETAILED.md#supported-devices) lists what each family is expected to expose.
 
 ## Not Working?
 
@@ -176,7 +91,7 @@ The [full troubleshooting list](docs/README-DETAILED.md#troubleshooting) covers 
 
 ## Security
 
-This plugin needs your NaviLink password, stores it in the Homebridge configuration file as every Homebridge credential is stored, and sends it to Navien to sign in. It is never written to the Homebridge log, never put into an accessory's cache, and redacted from anything the plugin prints. That is the summary; [SECURITY.md](SECURITY.md) has the detail, including what a capture contains and why the fixtures in this repository are pseudonymised.
+This plugin needs your NaviLink password, stores it in the Homebridge configuration file as every Homebridge credential is stored, and sends it to Navien to sign in. It is never written to the Homebridge log, never put into an accessory's cache, and redacted from anything the plugin prints. [SECURITY.md](SECURITY.md) has the detail, including what a capture contains and why the fixtures in this repository are pseudonymised.
 
 ## Requirements
 
@@ -185,8 +100,6 @@ This plugin needs your NaviLink password, stores it in the Homebridge configurat
 - A North American NaviLink account (`nlus`). Other Navien regions use different hosts and will look like a rejected password
 - A NaviLink account with at least one gateway online
 - A working internet connection
-
-
 
 ## More Info
 
@@ -197,13 +110,9 @@ This plugin needs your NaviLink password, stores it in the Homebridge configurat
 - [Report Issues](https://github.com/tbaur/homebridge-navilink/issues)
 - [Changelog](CHANGELOG.md)
 
-
-
 ## Trademarks
 
 homebridge-navilink is an independent project. It is not affiliated with or endorsed by Navien. Navien and NaviLink are trademarks of Kyungdong Navien Co., Ltd.
-
-
 
 ## License
 
