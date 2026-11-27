@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.2](https://github.com/tbaur/homebridge-navilink/compare/v1.1.1...v1.1.2) (2026-11-27)
+
+
+### Bug Fixes
+
+* bump @homebridge/plugin-ui-utils from 2.2.6 to 2.3.0 ([#49](https://github.com/tbaur/homebridge-navilink/issues/49)) ([6375875](https://github.com/tbaur/homebridge-navilink/commit/6375875062e8b7091e0ee48a2a61bdc89283fa22))
+
 ## [1.1.1](https://github.com/tbaur/homebridge-navilink/compare/v1.1.0...v1.1.1) (2026-10-25)
 
 
