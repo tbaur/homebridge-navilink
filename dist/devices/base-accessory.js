@@ -94,7 +94,7 @@ class BaseAccessory {
     }
     /** The HAP error that makes a tile show No Response. */
     communicationFailure() {
-        return new this.host.api.hap.HapStatusError(-70402 /* this.host.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE */);
+        return new this.host.api.hap.HapStatusError(this.host.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
     }
     /**
      * Run a write, answering HomeKit within its budget.
@@ -207,7 +207,7 @@ class BaseAccessory {
      */
     markUnavailable() {
         const { HapStatusError, HAPStatus } = this.host.api.hap;
-        const error = new HapStatusError(-70402 /* HAPStatus.SERVICE_COMMUNICATION_FAILURE */);
+        const error = new HapStatusError(HAPStatus.SERVICE_COMMUNICATION_FAILURE);
         const infoUuid = this.host.hap.Service.AccessoryInformation.UUID;
         for (const service of this.accessory.services) {
             if (service.UUID === infoUuid) {
